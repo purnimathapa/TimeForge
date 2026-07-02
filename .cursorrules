@@ -1,0 +1,37 @@
+# TimeForge — Stack Lock
+
+This project implements TimeForge as a Django + PostgreSQL monolith with server-rendered templates.
+Do not introduce alternate stacks or frameworks unless the user explicitly overrides this file.
+
+## Required stack
+
+- **Backend:** Django (Python)
+- **Database:** PostgreSQL
+- **Frontend:** Django templates, HTML forms, project static CSS
+- **Auth:** Django built-in auth with custom User model (`accounts.User`)
+- **Scheduling engine:** Python module in `scheduling/services/` (callable from views and management commands)
+
+## Forbidden technologies
+
+Do NOT add, suggest, or scaffold:
+
+- React, Vue, Angular, or any SPA framework
+- Node.js or Express
+- MongoDB or other document databases as primary storage
+- FastAPI or a separate REST API tier replacing Django views
+- Tailwind CSS or utility-first CSS build pipelines
+
+## Architecture references
+
+Before creating models, views, or apps, read:
+
+- `docs/ARCHITECTURE.md` — request flow, engine location, auth
+- `docs/DJANGO_APPS.md` — app boundaries (accounts, core, academics, scheduling, timetable, dashboard)
+- `docs/DATA_MODEL.md` — entity list and naming (Activity → ClassSession)
+
+## Implementation conventions
+
+- Keep the scheduling engine framework-agnostic; views/commands persist ORM results.
+- Use role-based decorators from `accounts` for mutating scheduling and timetable actions.
+- Prefer function-based or class-based Django views with templates—not JSON APIs—for user-facing features.
+- Match existing Django project layout under `config/` and one app per domain listed above.

@@ -1,3 +1,86 @@
-from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.db.models import Q
+from django.contrib import messages
+from accounts.mixins import RoleRequiredMixin
+from .models import TimeSlot, Constraint
+from .forms import TimeSlotForm, ConstraintForm
 
-# Create your views here.
+class SchedulingAdminCRUDMixin(RoleRequiredMixin):
+    allowed_roles = ['ADMIN']
+    paginate_by = 20
+
+# -- TimeSlot --
+class TimeSlotListView(SchedulingAdminCRUDMixin, ListView):
+    model = TimeSlot
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs
+
+class TimeSlotCreateView(SchedulingAdminCRUDMixin, CreateView):
+    model = TimeSlot
+    form_class = TimeSlotForm
+    success_url = reverse_lazy('scheduling:timeslot_list')
+    def form_valid(self, form):
+        messages.success(self.request, "Time Slot created successfully.")
+        return super().form_valid(form)
+
+class TimeSlotUpdateView(SchedulingAdminCRUDMixin, UpdateView):
+    model = TimeSlot
+    form_class = TimeSlotForm
+    success_url = reverse_lazy('scheduling:timeslot_list')
+    def form_valid(self, form):
+        messages.success(self.request, "Time Slot updated successfully.")
+        return super().form_valid(form)
+
+class TimeSlotDeleteView(SchedulingAdminCRUDMixin, DeleteView):
+    model = TimeSlot
+    success_url = reverse_lazy('scheduling:timeslot_list')
+    def delete(self, request, *args, **kwargs):
+        messages.success(request, "Time Slot deleted successfully.")
+        return super().delete(request, *args, **kwargs)
+
+# -- Constraint --
+class ConstraintListView(SchedulingAdminCRUDMixin, ListView):
+    model = Constraint
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.GET.get('q')
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(constraint_type__icontains=q))
+        return qs
+
+class ConstraintCreateView(SchedulingAdminCRUDMixin, CreateView):
+    model = Constraint
+    form_class = ConstraintForm
+    success_url = reverse_lazy('scheduling:constraint_list')
+    def form_valid(self, form):
+        messages.success(self.request, "Constraint created successfully.")
+        return super().form_valid(form)
+        
+    def form_invalid(self, form):
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(self.request, f"{field}: {error}")
+        return super().form_invalid(form)
+
+class ConstraintUpdateView(SchedulingAdminCRUDMixin, UpdateView):
+    model = Constraint
+    form_class = ConstraintForm
+    success_url = reverse_lazy('scheduling:constraint_list')
+    def form_valid(self, form):
+        messages.success(self.request, "Constraint updated successfully.")
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(self.request, f"{field}: {error}")
+        return super().form_invalid(form)
+
+class ConstraintDeleteView(SchedulingAdminCRUDMixin, DeleteView):
+    model = Constraint
+    success_url = reverse_lazy('scheduling:constraint_list')
+    def delete(self, request, *args, **kwargs):
+        messages.success(request, "Constraint deleted successfully.")
+        return super().delete(request, *args, **kwargs)

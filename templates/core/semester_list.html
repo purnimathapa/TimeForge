@@ -1,0 +1,33 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Semesters{% endblock %}
+
+{% block create_url %}{% url 'core:semester_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Name</th>
+    <th>Code</th>
+    <th>Start Date</th>
+    <th>End Date</th>
+    <th>Status</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.name }}</td>
+    <td>{{ object.code }}</td>
+    <td>{{ object.start_date|date:"M d, Y" }}</td>
+    <td>{{ object.end_date|date:"M d, Y" }}</td>
+    <td>
+        {% if object.is_active %}
+            <span class="badge bg-success">Active</span>
+        {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        <a href="{% url 'core:semester_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'core:semester_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No semesters found.{% endblock %}

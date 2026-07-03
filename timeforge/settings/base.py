@@ -31,6 +31,8 @@ INSTALLED_APPS = [
     "scheduling",
     "timetable",
     "dashboard",
+    "crispy_forms",
+    "crispy_bootstrap5",
 ]
 
 MIDDLEWARE = [
@@ -113,3 +115,7 @@ LOGOUT_REDIRECT_URL = 'login'
 
 # Email backend for password reset (dev)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Crispy Forms
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"

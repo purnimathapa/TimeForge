@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Teacher{% else %}Create Teacher{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing teacher profile.{% else %}Add a new teacher to the system.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'academics:teacher_list' %}{% endblock %}

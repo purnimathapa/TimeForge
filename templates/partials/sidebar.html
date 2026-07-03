@@ -2,23 +2,62 @@
     {% if user.is_authenticated and user.role == 'ADMIN' %}
     <ul class="nav nav-pills flex-column mb-auto">
         <li class="nav-item">
-            <a href="#" class="nav-link text-white sidebar-link">
+            <a href="{% url 'core:department_list' %}" class="nav-link text-white sidebar-link">
                 <i class="bi bi-building me-2"></i> Departments
             </a>
         </li>
         <li class="nav-item">
-            <a href="#" class="nav-link text-white sidebar-link">
+            <a href="{% url 'core:room_list' %}" class="nav-link text-white sidebar-link">
                 <i class="bi bi-door-open me-2"></i> Rooms
             </a>
         </li>
         <li class="nav-item">
-            <a href="#" class="nav-link text-white sidebar-link">
+            <a href="{% url 'core:semester_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-calendar3-range me-2"></i> Semesters
+            </a>
+        </li>
+        <li class="nav-item mt-3 mb-1">
+            <small class="text-muted text-uppercase fw-bold px-3">Academics</small>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'academics:subject_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-book me-2"></i> Subjects
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'academics:section_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-people me-2"></i> Sections
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'academics:teacher_list' %}" class="nav-link text-white sidebar-link">
                 <i class="bi bi-person-workspace me-2"></i> Teachers
             </a>
         </li>
         <li class="nav-item">
-            <a href="#" class="nav-link text-white sidebar-link">
-                <i class="bi bi-book me-2"></i> Subjects
+            <a href="{% url 'academics:class_session_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-journal-bookmark me-2"></i> Class Sessions
+            </a>
+        </li>
+        <li class="nav-item mt-3 mb-1">
+            <small class="text-muted text-uppercase fw-bold px-3">Scheduling</small>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'scheduling:timeslot_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-clock me-2"></i> Time Slots
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'scheduling:constraint_list' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-sliders me-2"></i> Constraints
+            </a>
+        </li>
+    </ul>
+    {% elif user.is_authenticated and user.role == 'TEACHER' %}
+    <ul class="nav nav-pills flex-column mb-auto">
+        <li class="nav-item">
+            <a href="{% url 'academics:teacher_portal' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-person-badge me-2"></i> My Portal
             </a>
         </li>
     </ul>

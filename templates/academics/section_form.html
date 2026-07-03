@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Section{% else %}Create Section{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing section details.{% else %}Add a new section/class group.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'academics:section_list' %}{% endblock %}

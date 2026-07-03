@@ -1,0 +1,33 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Teachers{% endblock %}
+
+{% block create_url %}{% url 'academics:teacher_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Name</th>
+    <th>Employee ID</th>
+    <th>Title</th>
+    <th>Department</th>
+    <th>Status</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.user.get_full_name }}</td>
+    <td>{{ object.employee_id }}</td>
+    <td>{{ object.title }}</td>
+    <td>{{ object.department.name }}</td>
+    <td>
+        {% if object.is_active %}
+            <span class="badge bg-success">Active</span>
+        {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        <a href="{% url 'academics:teacher_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'academics:teacher_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No teachers found.{% endblock %}

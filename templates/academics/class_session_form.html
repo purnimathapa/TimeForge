@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Class Session{% else %}Create Class Session{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing class session mapping.{% else %}Map a subject to a section with a teacher.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'academics:class_session_list' %}{% endblock %}

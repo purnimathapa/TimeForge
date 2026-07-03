@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Constraint{% else %}Create Constraint{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing constraint details.{% else %}Define a new scheduling constraint.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'scheduling:constraint_list' %}{% endblock %}

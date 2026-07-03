@@ -1,0 +1,33 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Subjects{% endblock %}
+
+{% block create_url %}{% url 'academics:subject_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Code</th>
+    <th>Name</th>
+    <th>Credits</th>
+    <th>Department</th>
+    <th>Status</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.code }}</td>
+    <td>{{ object.name }}</td>
+    <td>{{ object.credit_hours }}</td>
+    <td>{{ object.department.name }}</td>
+    <td>
+        {% if object.is_active %}
+            <span class="badge bg-success">Active</span>
+        {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        <a href="{% url 'academics:subject_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'academics:subject_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No subjects found.{% endblock %}

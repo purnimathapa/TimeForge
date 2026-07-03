@@ -1,0 +1,33 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Time Slots{% endblock %}
+
+{% block create_url %}{% url 'scheduling:timeslot_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Day</th>
+    <th>Period</th>
+    <th>Start Time</th>
+    <th>End Time</th>
+    <th>Status</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.get_day_of_week_display }}</td>
+    <td>{{ object.period_number }}</td>
+    <td>{{ object.start_time|time:"H:i" }}</td>
+    <td>{{ object.end_time|time:"H:i" }}</td>
+    <td>
+        {% if object.is_active %}
+            <span class="badge bg-success">Active</span>
+        {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        <a href="{% url 'scheduling:timeslot_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'scheduling:timeslot_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No time slots found.{% endblock %}

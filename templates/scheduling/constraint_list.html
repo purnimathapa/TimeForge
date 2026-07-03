@@ -1,0 +1,39 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Constraints{% endblock %}
+
+{% block create_url %}{% url 'scheduling:constraint_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Name</th>
+    <th>Type</th>
+    <th>Target</th>
+    <th>Hardness</th>
+    <th>Status</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.name }}</td>
+    <td>{{ object.get_constraint_type_display }}</td>
+    <td>{{ object.get_target_type_display }}</td>
+    <td>
+        {% if object.is_hard %}
+            <span class="badge bg-danger">Hard</span>
+        {% else %}
+            <span class="badge bg-warning text-dark">Soft (w: {{ object.weight }})</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if object.is_active %}
+            <span class="badge bg-success">Active</span>
+        {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        <a href="{% url 'scheduling:constraint_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'scheduling:constraint_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No constraints found.{% endblock %}

@@ -1,0 +1,25 @@
+{% extends 'partials/base_list.html' %}
+
+{% block page_title %}Class Sessions{% endblock %}
+
+{% block create_url %}{% url 'academics:class_session_create' %}{% endblock %}
+
+{% block table_headers %}
+    <th>Subject</th>
+    <th>Section</th>
+    <th>Teacher</th>
+    <th>Periods/Week</th>
+{% endblock %}
+
+{% block table_row %}
+    <td>{{ object.subject.code }} - {{ object.subject.name }}</td>
+    <td>{{ object.section.name }}</td>
+    <td>{{ object.teacher.user.get_full_name|default:"Unassigned" }}</td>
+    <td>{{ object.periods_per_week }}</td>
+    <td class="text-end">
+        <a href="{% url 'academics:class_session_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'academics:class_session_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+    </td>
+{% endblock %}
+
+{% block empty_message %}No class sessions found.{% endblock %}

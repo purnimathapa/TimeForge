@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Room{% else %}Create Room{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing room details.{% else %}Add a new room to the system.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'core:room_list' %}{% endblock %}

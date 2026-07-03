@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Semester{% else %}Create Semester{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update existing semester details.{% else %}Add a new academic semester.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'core:semester_list' %}{% endblock %}

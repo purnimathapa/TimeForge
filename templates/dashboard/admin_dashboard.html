@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">Admin Dashboard</h1>
+            <p class="text-muted">Institution-wide summary and statistics.</p>
+        </div>
+        <div class="col text-end">
+            <a href="#" class="btn btn-primary"><i class="bi bi-magic me-2"></i>Generate Timetable</a>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
+        <!-- Departments -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Departments</h6>
+                            <h2 class="mb-0">{{ department_count }}</h2>
+                        </div>
+                        <div class="text-primary fs-1">
+                            <i class="bi bi-building"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'core:department_list' %}" class="text-decoration-none small">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Rooms -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Rooms</h6>
+                            <h2 class="mb-0">{{ room_count }}</h2>
+                        </div>
+                        <div class="text-success fs-1">
+                            <i class="bi bi-door-open"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'core:room_list' %}" class="text-decoration-none small text-success">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teachers -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-info">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Teachers</h6>
+                            <h2 class="mb-0">{{ teacher_count }}</h2>
+                        </div>
+                        <div class="text-info fs-1">
+                            <i class="bi bi-person-workspace"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'academics:teacher_list' %}" class="text-decoration-none small text-info">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subjects -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Subjects</h6>
+                            <h2 class="mb-0">{{ subject_count }}</h2>
+                        </div>
+                        <div class="text-warning fs-1">
+                            <i class="bi bi-book"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'academics:subject_list' %}" class="text-decoration-none small text-warning">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sections -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-secondary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Sections</h6>
+                            <h2 class="mb-0">{{ section_count }}</h2>
+                        </div>
+                        <div class="text-secondary fs-1">
+                            <i class="bi bi-people"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'academics:section_list' %}" class="text-decoration-none small text-secondary">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Constraints -->
+        <div class="col">
+            <div class="card shadow-sm h-100 border-start border-4 border-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase mb-1">Active Constraints</h6>
+                            <h2 class="mb-0">{{ constraint_count }}</h2>
+                        </div>
+                        <div class="text-danger fs-1">
+                            <i class="bi bi-sliders"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <a href="{% url 'scheduling:constraint_list' %}" class="text-decoration-none small text-danger">View all <i class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State for Timetable -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm bg-light">
+                <div class="card-body text-center py-5">
+                    <div class="text-muted mb-3">
+                        <i class="bi bi-calendar-x fs-1"></i>
+                    </div>
+                    <h5 class="text-muted">No Timetable Generated Yet</h5>
+                    <p class="text-muted mb-0">Use the button at the top of this page to run the scheduling engine.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

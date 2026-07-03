@@ -5,10 +5,16 @@ from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
 from .models import Department, Room, Semester
 from .forms import DepartmentForm, RoomForm, SemesterForm
+from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
 class HomeView(TemplateView):
     template_name = 'core/home.html'
+
+    def get(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return redirect('dashboard:dashboard')
+        return super().get(request, *args, **kwargs)
 
 # Optional Mixin for common CRUD patterns
 class CoreAdminCRUDMixin(RoleRequiredMixin):

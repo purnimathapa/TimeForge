@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}Server Error | TimeForge{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 60vh;">
+    <div class="text-center">
+        <h1 class="display-1 fw-bold text-danger">500</h1>
+        <h2 class="h3 mb-4">Internal Server Error</h2>
+        <p class="text-muted mb-4">Oops! Something went wrong on our end. We are looking into it.</p>
+        <a href="{% url 'home' %}" class="btn btn-primary px-4 py-2 rounded-pill">
+            <i class="bi bi-house-door me-2"></i>Return to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

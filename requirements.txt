@@ -16,3 +16,7 @@ openpyxl==3.1.5
 django-crispy-forms==2.3
 crispy-bootstrap5==2024.10
 
+gunicorn==21.2.0
+whitenoise==6.6.0
+dj-database-url==2.1.0
+python-dotenv==1.0.1

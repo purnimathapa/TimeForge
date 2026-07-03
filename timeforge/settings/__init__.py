@@ -6,4 +6,9 @@ Production deployments should set DJANGO_SETTINGS_MODULE to a dedicated module
 when one is added (e.g. timeforge.settings.prod).
 """
 
-from .dev import *  # noqa: F403
+import os
+
+if os.getenv('DJANGO_ENV') == 'production':
+    from .production import *
+else:
+    from .dev import *

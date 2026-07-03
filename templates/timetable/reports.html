@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+
+{% block title %}Timetable Reports - TimeForge{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3 align-items-center">
+        <div class="col-md-7">
+            <h1 class="h3 mb-1">
+                <i class="bi bi-clipboard-data me-2"></i>Timetable Reports
+            </h1>
+            {% if semester %}
+                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} - v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
+            {% endif %}
+        </div>
+        <div class="col-md-5 text-md-end mt-2 mt-md-0">
+            {% if timetable %}
+            <div class="btn-group btn-group-sm" role="group" aria-label="Full institution exports">
+                <a class="btn btn-outline-danger"
+                   href="{% url 'timetable:export' 'full' 'pdf' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}">
+                    <i class="bi bi-file-earmark-pdf me-1"></i>Full PDF
+                </a>
+                <a class="btn btn-outline-success"
+                   href="{% url 'timetable:export' 'full' 'xlsx' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}">
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Full Excel
+                </a>
+                <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+                    <i class="bi bi-printer me-1"></i>Print
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not semester %}
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
+            <h5 class="text-muted">No Active Semester</h5>
+            <p class="text-muted mb-0">Please set an active semester before viewing reports.</p>
+        </div>
+    </div>
+    {% elif not timetable %}
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
+            <h5 class="text-muted">No Timetable Generated Yet</h5>
+            <p class="text-muted mb-0">Generate a timetable for <strong>{{ semester.name }}</strong> before viewing reports.</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-semibold">Teachers Scheduled</div>
+                    <div class="display-6">{{ teacher_workloads|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-semibold">Rooms Tracked</div>
+                    <div class="display-6">{{ room_utilization|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-semibold">Soft Penalty</div>
+                    <div class="display-6">{{ total_penalty }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0"><i class="bi bi-person-lines-fill me-2"></i>Teacher Workload Distribution</h2>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Teacher</th>
+                        <th class="text-end">Periods</th>
+                        <th>Subjects</th>
+                        <th>Sections</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in teacher_workloads %}
+                    <tr>
+                        <td>{{ row.teacher }}</td>
+                        <td class="text-end fw-semibold">{{ row.periods }}</td>
+                        <td>{{ row.subjects|join:", " }}</td>
+                        <td>{{ row.sections|join:", " }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted text-center py-4">No teacher workload data available.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0"><i class="bi bi-door-open me-2"></i>Room Utilization</h2>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Room</th>
+                        <th>Type</th>
+                        <th class="text-end">Used Periods</th>
+                        <th class="text-end">Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in room_utilization %}
+                    <tr>
+                        <td>{{ row.room.name }}</td>
+                        <td>{{ row.room.get_room_type_display }}</td>
+                        <td class="text-end fw-semibold">{{ row.used_periods }}</td>
+                        <td class="text-end">{{ row.utilization }}%</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted text-center py-4">No room utilization data available.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0"><i class="bi bi-shield-exclamation me-2"></i>Unresolved Soft-Constraint Penalties</h2>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Type</th>
+                        <th>Teacher</th>
+                        <th>Day</th>
+                        <th>Detail</th>
+                        <th class="text-end">Penalty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in soft_penalties %}
+                    <tr>
+                        <td><i class="bi {{ row.type_icon }} me-1"></i>{{ row.type }}</td>
+                        <td>{{ row.teacher }}</td>
+                        <td>{{ row.day }}</td>
+                        <td>{{ row.detail }}</td>
+                        <td class="text-end fw-semibold">{{ row.penalty }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="text-muted text-center py-4">No unresolved soft-constraint penalties.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

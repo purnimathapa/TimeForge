@@ -18,6 +18,7 @@ def run_tests_and_seed():
     
     # Clean up previous seed if running multiple times
     Room.objects.all().delete()
+    ClassSession.objects.all().delete()
     Subject.objects.all().delete()
     Section.objects.all().delete()
     TeacherAvailability.objects.all().delete()

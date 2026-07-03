@@ -26,9 +26,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             context['constraint_count'] = Constraint.objects.filter(is_active=True).count()
         
         elif role == 'TEACHER':
-            # Add teacher specific context here. 
-            # Prompt: "Teacher dashboard: today's sessions (once timetable data exists 
-            # — until Prompt 11/12, show an honest empty state, not fake data), a link to their availability settings."
-            context['has_timetable'] = False
+            from timetable.models import Timetable
+            from core.models import Semester
+            
+            active_semester = Semester.objects.filter(is_active=True).first()
+            if active_semester:
+                context['has_timetable'] = Timetable.objects.filter(semester=active_semester).exists()
+            else:
+                context['has_timetable'] = False
             
         return context

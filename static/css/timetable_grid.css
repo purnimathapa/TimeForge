@@ -1,0 +1,281 @@
+/* ==========================================================================
+   Timetable Grid Styles
+   - Subject color palette (10 curated colours via HSL)
+   - Grid table and cell layout
+   - Activity card within each cell
+   - Empty / hover states
+   ========================================================================== */
+
+/* ------------------------------------------------------------------
+   Subject colour palette — deterministic: subject.code hash % 10
+   ------------------------------------------------------------------ */
+.subject-color-0  { background-color: #e8f0fe; border-left: 4px solid #4285f4; color: #1a3e72; }
+.subject-color-1  { background-color: #fce8e6; border-left: 4px solid #ea4335; color: #7a1b14; }
+.subject-color-2  { background-color: #e6f4ea; border-left: 4px solid #34a853; color: #145225; }
+.subject-color-3  { background-color: #fef7e0; border-left: 4px solid #fbbc04; color: #7a5900; }
+.subject-color-4  { background-color: #f3e8fd; border-left: 4px solid #a142f4; color: #4a1b72; }
+.subject-color-5  { background-color: #e0f7fa; border-left: 4px solid #00acc1; color: #004d56; }
+.subject-color-6  { background-color: #fce4ec; border-left: 4px solid #e91e63; color: #6e0d2e; }
+.subject-color-7  { background-color: #e8eaf6; border-left: 4px solid #3f51b5; color: #1a237e; }
+.subject-color-8  { background-color: #fff3e0; border-left: 4px solid #ff9800; color: #7a4100; }
+.subject-color-9  { background-color: #e0f2f1; border-left: 4px solid #009688; color: #004d40; }
+
+/* ------------------------------------------------------------------
+   Grid table
+   ------------------------------------------------------------------ */
+.timetable-grid {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+}
+
+.timetable-grid thead th {
+    background-color: #343a40;
+    color: #ffffff;
+    text-align: center;
+    padding: 0.65rem 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    border: 1px solid #495057;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.timetable-grid thead th.period-header {
+    min-width: 90px;
+    background-color: #23272b;
+}
+
+.timetable-grid tbody td {
+    border: 1px solid #dee2e6;
+    padding: 0.35rem;
+    vertical-align: top;
+    min-width: 140px;
+    height: 80px;
+    position: relative;
+    transition: background-color 0.15s ease;
+}
+
+.timetable-grid tbody td:hover {
+    background-color: #f8f9fa;
+}
+
+.timetable-grid tbody td.period-label {
+    background-color: #f1f3f5;
+    text-align: center;
+    vertical-align: middle;
+    font-weight: 600;
+    min-width: 90px;
+    width: 90px;
+    font-size: 0.78rem;
+    color: #495057;
+    border-right: 2px solid #dee2e6;
+}
+
+.timetable-grid tbody td.period-label .period-time {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: #868e96;
+    margin-top: 2px;
+}
+
+/* ------------------------------------------------------------------
+   Activity card inside a cell
+   ------------------------------------------------------------------ */
+.activity-card {
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.35rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    cursor: default;
+}
+
+.activity-card[draggable="true"] {
+    cursor: grab;
+}
+
+.activity-card[draggable="true"]:active,
+.activity-card.is-dragging {
+    cursor: grabbing;
+}
+
+.activity-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+}
+
+.activity-card.is-dragging {
+    opacity: 0.55;
+}
+
+.activity-card.is-locked {
+    box-shadow: inset 0 0 0 1px rgba(33, 37, 41, 0.18);
+}
+
+.activity-card-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 0.95rem;
+    gap: 0.15rem;
+    margin-bottom: 0.1rem;
+}
+
+.lock-indicator {
+    font-size: 0.72rem;
+    opacity: 0.8;
+}
+
+.unlock-slot-button {
+    --bs-btn-padding-x: 0;
+    --bs-btn-padding-y: 0;
+    --bs-btn-font-size: 0.74rem;
+    color: inherit;
+    line-height: 1;
+    opacity: 0.8;
+}
+
+.unlock-slot-button:hover,
+.unlock-slot-button:focus {
+    color: inherit;
+    opacity: 1;
+}
+
+.timetable-drop-zone.drop-zone-active {
+    background-color: #e7f1ff;
+    outline: 2px dashed #0d6efd;
+    outline-offset: -4px;
+}
+
+.activity-card .activity-subject {
+    font-weight: 700;
+    font-size: 0.82rem;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-card .activity-detail {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-card .activity-detail i {
+    font-size: 0.68rem;
+    margin-right: 2px;
+}
+
+/* ------------------------------------------------------------------
+   Empty cell state
+   ------------------------------------------------------------------ */
+.timetable-grid tbody td.empty-cell {
+    background-color: #fafbfc;
+}
+
+.empty-state-message {
+    color: #adb5bd;
+    font-style: italic;
+    font-size: 0.8rem;
+}
+
+/* ------------------------------------------------------------------
+   Filter / selector bar
+   ------------------------------------------------------------------ */
+.timetable-filter-bar {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.timetable-filter-bar .form-select {
+    max-width: 320px;
+}
+
+/* ------------------------------------------------------------------
+   Grid wrapper — horizontal scroll on small viewports
+   ------------------------------------------------------------------ */
+.timetable-grid-wrapper {
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid #dee2e6;
+    background-color: #ffffff;
+}
+
+/* ------------------------------------------------------------------
+   Conflict report styles
+   ------------------------------------------------------------------ */
+.penalty-badge {
+    font-size: 1.1rem;
+    padding: 0.4em 0.8em;
+}
+
+.penalty-badge.penalty-none {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.penalty-badge.penalty-low {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.penalty-badge.penalty-high {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.violation-row {
+    transition: background-color 0.15s ease;
+}
+
+.violation-row:hover {
+    background-color: #f8f9fa;
+}
+
+/* ------------------------------------------------------------------
+   Responsive tweaks
+   ------------------------------------------------------------------ */
+@media (max-width: 991.98px) {
+    .timetable-grid tbody td {
+        min-width: 120px;
+        height: 70px;
+    }
+
+    .activity-card .activity-subject {
+        font-size: 0.76rem;
+    }
+
+    .activity-card .activity-detail {
+        font-size: 0.68rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .timetable-grid {
+        font-size: 0.78rem;
+    }
+
+    .timetable-grid tbody td {
+        min-width: 100px;
+        height: 60px;
+        padding: 0.25rem;
+    }
+
+    .activity-card {
+        padding: 0.3rem 0.4rem;
+    }
+}

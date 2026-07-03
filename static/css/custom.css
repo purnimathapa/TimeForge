@@ -1,0 +1,31 @@
+/* Sidebar Styles */
+.sidebar {
+    width: 250px;
+    min-height: calc(100vh - 56px); /* 56px is approx navbar height */
+    transition: all 0.3s ease-in-out;
+}
+
+/* Mobile sidebar override */
+@media (max-width: 767.98px) {
+    .sidebar.show {
+        display: flex !important;
+        position: absolute;
+        z-index: 1040;
+        height: 100%;
+        left: 0;
+    }
+}
+
+.sidebar-link {
+    border-radius: 0.25rem;
+    margin-bottom: 0.25rem;
+    transition: background-color 0.2s;
+}
+
+.sidebar-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-link.active {
+    background-color: #0d6efd; /* Bootstrap primary color */
+}

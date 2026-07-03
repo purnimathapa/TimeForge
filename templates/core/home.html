@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard | TimeForge{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">Dashboard</h1>
+            <p class="text-muted">Welcome to TimeForge scheduling system.</p>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 border-start border-primary border-4">
+                <div class="card-body">
+                    <h5 class="card-title text-primary"><i class="bi bi-book"></i> Active Courses</h5>
+                    <p class="card-text display-6 fw-bold">0</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 border-start border-success border-4">
+                <div class="card-body">
+                    <h5 class="card-title text-success"><i class="bi bi-person-workspace"></i> Teachers</h5>
+                    <p class="card-text display-6 fw-bold">0</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 border-start border-info border-4">
+                <div class="card-body">
+                    <h5 class="card-title text-info"><i class="bi bi-door-open"></i> Rooms</h5>
+                    <p class="card-text display-6 fw-bold">0</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

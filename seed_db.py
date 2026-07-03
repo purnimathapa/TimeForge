@@ -7,7 +7,8 @@ django.setup()
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from core.models import Department, Room, Semester
-from academics.models import Subject, Section, TeacherProfile, TeacherAvailability
+from academics.models import Subject, Section, TeacherProfile, ClassSession
+from scheduling.models import TeacherAvailability, TimeSlot
 import datetime
 
 User = get_user_model()
@@ -101,6 +102,12 @@ def run_tests_and_seed():
         dept = [cs, math, phy, eng][(i-2) % 4]
         TeacherProfile.objects.create(user=u, employee_id=f"EMP00{i}", title="Prof.", department=dept)
         
+    # 7. Create ClassSessions
+    print("Seeding ClassSessions...")
+    ClassSession.objects.create(subject=Subject.objects.get(code="CS201"), teacher=t1, section=Section.objects.get(name="CS Batch 2026 A"), periods_per_week=3)
+    ClassSession.objects.create(subject=Subject.objects.get(code="CS301"), teacher=t1, section=Section.objects.get(name="CS Batch 2026 B"), periods_per_week=4)
+    ClassSession.objects.create(subject=Subject.objects.get(code="MATH101"), teacher=TeacherProfile.objects.get(employee_id="EMP002"), section=Section.objects.get(name="Math Batch 2026"), periods_per_week=3)
+
     print("Seed complete! 5+ rows generated for each model.")
 
 if __name__ == '__main__':

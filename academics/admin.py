@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Subject, Section, TeacherProfile, TeacherAvailability
+from .models import Subject, Section, TeacherProfile, ClassSession
+
+@admin.register(ClassSession)
+class ClassSessionAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'section', 'teacher', 'periods_per_week')
+    list_filter = ('subject', 'section', 'teacher')
+
+from scheduling.models import TeacherAvailability
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
@@ -24,7 +31,3 @@ class TeacherProfileAdmin(admin.ModelAdmin):
     list_filter = ('department', 'is_active')
     inlines = [TeacherAvailabilityInline]
 
-@admin.register(TeacherAvailability)
-class TeacherAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ('teacher', 'day_of_week', 'start_time', 'end_time', 'is_available')
-    list_filter = ('day_of_week', 'is_available')

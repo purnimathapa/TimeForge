@@ -44,29 +44,31 @@ class TeacherProfile(models.Model):
 
     def __str__(self):
         return f"{self.title} {self.user.get_full_name()} ({self.employee_id})"
+class ClassSession(models.Model):
+    """
+    The schedulable teaching activity (unplaced).
+    Derived from a SectionOffering / Subject for a Section.
+    """
+    subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name='class_sessions')
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='class_sessions')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='class_sessions')
+    periods_per_week = models.PositiveIntegerField(default=1)
+    
+    def clean(self):
+        from scheduling.models import TimeSlot
+        # Ensure periods_per_week doesn't exceed total available timeslots
+        total_slots = TimeSlot.objects.filter(is_active=True).count()
+        if total_slots > 0 and self.periods_per_week > total_slots:
+            raise ValidationError({
+                "periods_per_week": f"Cannot exceed the total number of active time slots in a week ({total_slots})."
+            })
 
-# Schema decision: A relational model TeacherAvailability per day/period is much cleaner 
-# than a JSON blob because it allows database-level querying (e.g. finding all teachers available on Monday morning), 
-# enables proper foreign key relationships to time periods (if we add them later),
-# and is easier to validate using Django forms/admin without custom JSON parsing logic.
-class TeacherAvailability(models.Model):
-    class DayOfWeek(models.IntegerChoices):
-        MONDAY = 1, 'Monday'
-        TUESDAY = 2, 'Tuesday'
-        WEDNESDAY = 3, 'Wednesday'
-        THURSDAY = 4, 'Thursday'
-        FRIDAY = 5, 'Friday'
-        SATURDAY = 6, 'Saturday'
-        SUNDAY = 7, 'Sunday'
-
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='availabilities')
-    day_of_week = models.IntegerField(choices=DayOfWeek.choices)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    is_available = models.BooleanField(default=True)
-
-    class Meta:
-        verbose_name_plural = "Teacher availabilities"
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.teacher} on {self.get_day_of_week_display()} ({self.start_time} - {self.end_time})"
+        teacher_name = self.teacher.user.get_full_name() if self.teacher else "Unassigned"
+        return f"{self.subject.code} - {self.section.name} ({teacher_name})"
+
+

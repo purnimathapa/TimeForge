@@ -1,9 +1,15 @@
-asgiref==3.11.1
-charset-normalizer==3.4.7
+# Django
 Django==6.0.6
-et_xmlfile==2.0.0
-openpyxl==3.1.5
-pillow==12.3.0
+
+# PostgreSQL adapter
 psycopg2-binary==2.9.12
+
+# Environment variables (.env)
+python-decouple==3.8
+
+# PDF export (timetable) — reportlab chosen over weasyprint:
+# pure Python, no system Cairo/Pango dependencies, simpler deployment.
 reportlab==5.0.0
-sqlparse==0.5.5
+
+# Excel export (timetable)
+openpyxl==3.1.5

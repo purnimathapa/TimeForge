@@ -112,8 +112,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "timeforge",
-        "USER": "purnimathapa",
-        "PASSWORD": "Purnim@123",
+        "USER": "username",
+        "PASSWORD": "password",
         "HOST": "localhost",
         "PORT": "5432",
     }

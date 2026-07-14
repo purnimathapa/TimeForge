@@ -7,7 +7,7 @@ from scheduling.models import Constraint
 from django.db.models import Count
 
 class DashboardView(LoginRequiredMixin, TemplateView):
-    login_url = reverse_lazy("login")
+    login_url = reverse_lazy("accounts:login")
 
     def get_template_names(self):
         if self.request.user.role == 'ADMIN':

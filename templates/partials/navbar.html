@@ -34,22 +34,25 @@
                         {% endif %}
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                        <li><a class="dropdown-item" href="{% url 'profile' %}">Profile</a></li>
+                        <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">Profile</a></li>
                         {% if user.role == 'ADMIN' %}
-                        <li><a class="dropdown-item" href="{% url 'teacher_create' %}">Create Teacher</a></li>
+                        <li><a class="dropdown-item" href="{% url 'academics:teacher_create' %}">Create Teacher</a></li>
+                        <li><a class="dropdown-item" href="{% url 'accounts:admin_create' %}">Create Admin</a></li>
                         {% endif %}
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <form method="post" action="{% url 'logout' %}">
+                            <form method="post" action="{% url 'accounts:logout' %}" class="m-0">
                                 {% csrf_token %}
-                                <button type="submit" class="dropdown-item">Logout</button>
+                                <button type="submit" class="dropdown-item border-0 bg-transparent w-100 text-start">
+                                    Logout
+                                </button>
                             </form>
                         </li>
                     </ul>
                 </li>
                 {% else %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{% url 'login' %}">Login</a>
+                    <a class="nav-link" href="{% url 'accounts:login' %}">Login</a>
                 </li>
                 {% endif %}
             </ul>

@@ -16,7 +16,7 @@
     <td>{{ object.user.get_full_name }}</td>
     <td>{{ object.employee_id }}</td>
     <td>{{ object.title }}</td>
-    <td>{{ object.department.name }}</td>
+    <td>{{ object.department.name|default:"-" }}</td>
     <td>
         {% if object.is_active %}
             <span class="badge bg-success">Active</span>

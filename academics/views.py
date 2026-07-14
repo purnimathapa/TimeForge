@@ -1,11 +1,12 @@
 from django.urls import reverse_lazy
+from django.shortcuts import redirect
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
 from .models import Subject, Section, TeacherProfile, ClassSession
 from scheduling.models import TeacherAvailability
-from .forms import SubjectForm, SectionForm, TeacherProfileForm, ClassSessionForm
+from .forms import SubjectForm, SectionForm, TeacherProfileForm, TeacherCreationForm, ClassSessionForm
 
 class AcademicsAdminCRUDMixin(RoleRequiredMixin):
     allowed_roles = ['ADMIN']
@@ -80,6 +81,7 @@ class SectionDeleteView(AcademicsAdminCRUDMixin, DeleteView):
 # -- TeacherProfile --
 class TeacherListView(AcademicsAdminCRUDMixin, ListView):
     model = TeacherProfile
+    template_name = 'academics/teacher_list.html'
     def get_queryset(self):
         qs = super().get_queryset()
         q = self.request.GET.get('q')
@@ -89,15 +91,19 @@ class TeacherListView(AcademicsAdminCRUDMixin, ListView):
 
 class TeacherCreateView(AcademicsAdminCRUDMixin, CreateView):
     model = TeacherProfile
-    form_class = TeacherProfileForm
+    form_class = TeacherCreationForm
+    template_name = 'academics/teacher_form.html'
     success_url = reverse_lazy('academics:teacher_list')
+
     def form_valid(self, form):
-        messages.success(self.request, "Teacher created successfully.")
-        return super().form_valid(form)
+        self.object = form.save()
+        messages.success(self.request, "Teacher account and profile created successfully.")
+        return redirect(self.get_success_url())
 
 class TeacherUpdateView(AcademicsAdminCRUDMixin, UpdateView):
     model = TeacherProfile
     form_class = TeacherProfileForm
+    template_name = 'academics/teacher_form.html'
     success_url = reverse_lazy('academics:teacher_list')
     def form_valid(self, form):
         messages.success(self.request, "Teacher updated successfully.")
@@ -161,7 +167,7 @@ class TeacherPortalView(RoleRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        teacher = getattr(self.request.user, 'teacherprofile', None)
+        teacher = getattr(self.request.user, 'teacher_profile', None)
         context['teacher'] = teacher
         
         if teacher:

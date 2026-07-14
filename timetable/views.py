@@ -27,9 +27,10 @@ from django.views.generic import DetailView, ListView, TemplateView
 from accounts.mixins import RoleRequiredMixin
 from academics.models import TeacherProfile, Section
 from core.models import Room, Semester
+from scheduling.engine.algorithm import run_scheduler
 from scheduling.engine.constraints import compute_penalty, validate_single_placement
 from scheduling.engine.data_types import Placement
-from scheduling.engine.models_io import load_schedule_input
+from scheduling.engine.models_io import load_schedule_input, placements_to_slot_dicts
 from scheduling.models import TimeSlot, Constraint
 from .exports import export_timetable_pdf, export_timetable_xlsx
 from .models import Timetable, TimetableSlot
@@ -60,7 +61,9 @@ def _get_timetable(request, semester):
     Priority:
       1. Explicit ?timetable_id= query param
       2. Latest PUBLISHED timetable for the active semester
-      3. Latest DRAFT timetable for the active semester
+      3. (Admins only) Latest DRAFT timetable for the active semester
+
+    Non-admin users never receive a DRAFT timetable.
     Returns (timetable, all_timetables_for_semester) or (None, qs).
     """
     if semester is None:
@@ -68,14 +71,18 @@ def _get_timetable(request, semester):
 
     all_timetables = Timetable.objects.filter(semester=semester).order_by('-version')
 
+    is_admin = request.user.is_authenticated and request.user.is_admin()
+
     timetable_id = request.GET.get('timetable_id')
     if timetable_id:
         try:
             timetable = all_timetables.get(pk=timetable_id)
         except Timetable.DoesNotExist:
             timetable = None
-    else:
-        # Prefer PUBLISHED, fall back to DRAFT
+        if timetable and not is_admin and timetable.status != Timetable.Status.PUBLISHED:
+            timetable = None
+    elif is_admin:
+        # Admins: prefer PUBLISHED, fall back to DRAFT
         timetable = (
             all_timetables
             .filter(status=Timetable.Status.PUBLISHED)
@@ -85,6 +92,9 @@ def _get_timetable(request, semester):
             .filter(status=Timetable.Status.DRAFT)
             .first()
         )
+    else:
+        # Non-admins: published timetables only
+        timetable = all_timetables.filter(status=Timetable.Status.PUBLISHED).first()
 
     return timetable, all_timetables
 
@@ -255,12 +265,68 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
 # ── Basic timetable placeholders ──────────────────────────────────────────
 
 class GenerateTimetableView(RoleRequiredMixin, View):
-    """Placeholder route until the generation workflow is wired into timetable."""
+    """Run the scheduling engine for the active semester and persist results."""
     allowed_roles = ['ADMIN']
+    default_max_restarts = 10
 
     def get(self, request, *args, **kwargs):
-        messages.info(request, "Timetable generation is not available from this route yet.")
-        return redirect('timetable:teacher_view')
+        messages.info(request, "Use the Generate Timetable button on the dashboard.")
+        return redirect('home')
+
+    def post(self, request, *args, **kwargs):
+        semester = _get_active_semester()
+        if semester is None:
+            messages.error(
+                request,
+                "No active semester is configured. Activate a semester before generating.",
+            )
+            return redirect('home')
+
+        try:
+            schedule_input = load_schedule_input(semester.id)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect('home')
+
+        try:
+            max_restarts = int(request.POST.get('max_restarts', self.default_max_restarts))
+        except (TypeError, ValueError):
+            max_restarts = self.default_max_restarts
+
+        result = run_scheduler(schedule_input, max_restarts=max_restarts)
+
+        if not result.success:
+            detail = result.failure_reason or "The scheduler could not find a hard-feasible timetable."
+            if result.unplaced_activity_ids:
+                detail = f"{detail} Unplaced class sessions: {len(result.unplaced_activity_ids)}."
+            messages.error(request, detail)
+            return redirect('home')
+
+        try:
+            with transaction.atomic():
+                timetable = Timetable.objects.create(
+                    semester=semester,
+                    status=Timetable.Status.DRAFT,
+                    penalty_score=result.penalty,
+                )
+                slot_dicts = placements_to_slot_dicts(
+                    result,
+                    schedule_input,
+                    timetable_id=timetable.id,
+                )
+                TimetableSlot.objects.bulk_create([TimetableSlot(**d) for d in slot_dicts])
+        except Exception as exc:
+            messages.error(request, f"Timetable was generated but could not be saved: {exc}")
+            return redirect('home')
+
+        messages.success(
+            request,
+            (
+                f"Timetable v{timetable.version} generated successfully "
+                f"(penalty score: {timetable.penalty_score})."
+            ),
+        )
+        return redirect('timetable:detail', pk=timetable.pk)
 
 
 class TimetableListView(RoleRequiredMixin, ListView):

@@ -50,6 +50,7 @@ class SectionData:
     """A student section/cohort."""
     id: int
     name: str
+    student_count: int = 0
 
 
 @dataclass(frozen=True)

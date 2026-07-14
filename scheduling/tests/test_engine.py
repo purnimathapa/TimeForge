@@ -860,6 +860,55 @@ class TestSoftPenaltyCase(unittest.TestCase):
         )
 
 
+class TestRoomCapacity(unittest.TestCase):
+    """Room capacity hard constraint uses SectionData.student_count."""
+
+    def setUp(self):
+        self.schedule_input = ScheduleInput(
+            timeslots=[
+                TimeSlotData(1, 1, 1, "08:00", "09:00"),
+            ],
+            rooms=[
+                RoomData(1, "Small Room", 30, "LECTURE"),
+                RoomData(2, "Large Room", 60, "LECTURE"),
+            ],
+            teachers=[
+                TeacherData(1, "Dr. Capacity", 4, frozenset()),
+            ],
+            sections=[
+                SectionData(1, "Large Section", student_count=50),
+            ],
+            activities=[
+                ActivityData(1, "Physics", 1, 1, teacher_id=1),
+            ],
+            constraints=[],
+        )
+
+    def test_rejects_room_that_is_too_small(self):
+        result = validate_single_placement(
+            self.schedule_input.activities_by_id[1],
+            1,
+            1,
+            [],
+            self.schedule_input,
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertEqual(result.resource_type, "room")
+        self.assertIn("capacity", result.message.lower())
+
+    def test_accepts_room_with_sufficient_capacity(self):
+        result = validate_single_placement(
+            self.schedule_input.activities_by_id[1],
+            1,
+            2,
+            [],
+            self.schedule_input,
+        )
+
+        self.assertTrue(result.is_valid)
+
+
 # ---------------------------------------------------------------------------
 # Run as standalone script (for quick local debugging)
 # ---------------------------------------------------------------------------

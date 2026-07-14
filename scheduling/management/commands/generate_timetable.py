@@ -35,8 +35,8 @@ class Command(BaseCommand):
 
         if not result.success:
             self.stderr.write(self.style.ERROR("Algorithm failed to find a hard-feasible schedule."))
-            if result.message:
-                self.stderr.write(result.message)
+            if result.failure_reason:
+                self.stderr.write(result.failure_reason)
             sys.exit(1)
 
         self.stdout.write(self.style.SUCCESS("Schedule found! Persisting to database..."))

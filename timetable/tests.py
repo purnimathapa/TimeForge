@@ -7,6 +7,61 @@ from accounts.models import User
 from core.models import Room, Semester, Department
 from scheduling.models import Constraint, TimeSlot
 from timetable.models import Timetable, TimetableSlot
+from timetable.views import _get_timetable
+
+
+class GetTimetableResolutionTests(TestCase):
+    def setUp(self):
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26G",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.teacher = User.objects.create_user(
+            username="teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        self.draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+        self.published = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.PUBLISHED,
+        )
+
+    def _request_for(self, user):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.user = user
+        return request
+
+    def test_non_admin_does_not_return_draft(self):
+        request = self._request_for(self.teacher)
+        timetable, _all = _get_timetable(request, self.semester)
+
+        self.assertEqual(timetable, self.published)
+
+    def test_non_admin_ignores_explicit_draft_id(self):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/", {"timetable_id": self.draft.pk})
+        request.user = self.teacher
+        timetable, _all = _get_timetable(request, self.semester)
+
+        self.assertIsNone(timetable)
+
+    def test_admin_falls_back_to_draft_when_no_published(self):
+        self.published.delete()
+        request = self._request_for(self.admin)
+        timetable, _all = _get_timetable(request, self.semester)
+
+        self.assertEqual(timetable, self.draft)
 
 
 class TimetablePermissionTests(TestCase):

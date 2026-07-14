@@ -144,7 +144,7 @@ def load_schedule_input(semester_id: int) -> ScheduleInput:
     from academics.models import Section
     db_sections = Section.objects.filter(semester_id=semester_id, is_active=True)
     sections = [
-        SectionData(id=s.id, name=s.name)
+        SectionData(id=s.id, name=s.name, student_count=s.student_count)
         for s in db_sections
     ]
 

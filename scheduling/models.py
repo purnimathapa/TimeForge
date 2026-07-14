@@ -47,6 +47,8 @@ class Constraint(models.Model):
         ROOM_TYPE_REQUIRED = 'ROOM_TYPE_REQUIRED', 'Room Type Required'
         MAX_DAILY_HOURS = 'MAX_DAILY_HOURS', 'Max Daily Hours'
         NO_ADJACENT_GAPS = 'NO_ADJACENT_GAPS', 'No Adjacent Gaps'
+        MAX_CONSECUTIVE_PERIODS = 'MAX_CONSECUTIVE_PERIODS', 'Max Consecutive Periods'
+        PREFERRED_TEACHING_TIME = 'PREFERRED_TEACHING_TIME', 'Preferred Teaching Time'
         CUSTOM = 'CUSTOM', 'Custom Rule'
 
     class TargetType(models.TextChoices):
@@ -72,18 +74,53 @@ class Constraint(models.Model):
 
     # Structured Parameter Fields
     max_daily_periods = models.PositiveIntegerField(null=True, blank=True, help_text="Used for MAX_DAILY_HOURS")
+    max_consecutive_periods = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Used for MAX_CONSECUTIVE_PERIODS",
+    )
     required_room_type = models.CharField(max_length=20, choices=Room.RoomType.choices, null=True, blank=True, help_text="Used for ROOM_TYPE_REQUIRED")
     
     # Fallback for custom or complex parameters
-    custom_parameters = models.JSONField(null=True, blank=True)
+    custom_parameters = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Used for PREFERRED_TEACHING_TIME and CUSTOM. "
+            "Preferred teaching time shape: "
+            '{"preferred_days": [1, 2], "period_start": 1, "period_end": 4} '
+            "where preferred_days uses TimeSlot day codes (1=Monday … 5=Friday)."
+        ),
+    )
     
     is_active = models.BooleanField(default=True)
 
     def clean(self):
         if self.constraint_type == self.ConstraintType.MAX_DAILY_HOURS and self.max_daily_periods is None:
             raise ValidationError({"max_daily_periods": "Required when constraint type is Max Daily Hours."})
+        if self.constraint_type == self.ConstraintType.MAX_CONSECUTIVE_PERIODS and self.max_consecutive_periods is None:
+            raise ValidationError({
+                "max_consecutive_periods": "Required when constraint type is Max Consecutive Periods.",
+            })
         if self.constraint_type == self.ConstraintType.ROOM_TYPE_REQUIRED and not self.required_room_type:
             raise ValidationError({"required_room_type": "Required when constraint type is Room Type Required."})
+        if self.constraint_type == self.ConstraintType.PREFERRED_TEACHING_TIME:
+            params = self.custom_parameters or {}
+            preferred_days = params.get("preferred_days")
+            period_start = params.get("period_start")
+            period_end = params.get("period_end")
+            if not preferred_days:
+                raise ValidationError({
+                    "custom_parameters": "preferred_days is required for Preferred Teaching Time.",
+                })
+            if period_start is None or period_end is None:
+                raise ValidationError({
+                    "custom_parameters": "period_start and period_end are required for Preferred Teaching Time.",
+                })
+            if period_start > period_end:
+                raise ValidationError({
+                    "custom_parameters": "period_start must be less than or equal to period_end.",
+                })
 
     def save(self, *args, **kwargs):
         self.full_clean()

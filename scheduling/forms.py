@@ -16,5 +16,6 @@ class ConstraintForm(forms.ModelForm):
         fields = [
             'name', 'constraint_type', 'target_type', 'is_hard', 'weight',
             'semester', 'department', 'teacher', 'room', 'subject', 'section',
-            'max_daily_periods', 'required_room_type', 'custom_parameters', 'is_active'
+            'max_daily_periods', 'max_consecutive_periods', 'required_room_type',
+            'custom_parameters', 'is_active',
         ]

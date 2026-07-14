@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import unittest
 
+from django.test import TestCase as DjangoTestCase
+
 from scheduling.engine.algorithm import run_scheduler
 from scheduling.engine.constraints import (
     compute_penalty,
@@ -907,6 +909,230 @@ class TestRoomCapacity(unittest.TestCase):
         )
 
         self.assertTrue(result.is_valid)
+
+
+class TestTeacherCentredSoftConstraints(unittest.TestCase):
+    """MAX_CONSECUTIVE_PERIODS and PREFERRED_TEACHING_TIME soft penalties."""
+
+    def test_max_consecutive_periods_penalty(self):
+        timeslots = [
+            TimeSlotData(id=1, day_of_week=1, period_number=1, start_time="08:00", end_time="09:00"),
+            TimeSlotData(id=2, day_of_week=1, period_number=2, start_time="09:00", end_time="10:00"),
+            TimeSlotData(id=3, day_of_week=1, period_number=3, start_time="10:00", end_time="11:00"),
+            TimeSlotData(id=4, day_of_week=1, period_number=4, start_time="11:00", end_time="12:00"),
+        ]
+        rooms = [
+            RoomData(id=1, name="R1", capacity=40, room_type="LECTURE"),
+            RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
+            RoomData(id=3, name="R3", capacity=40, room_type="LECTURE"),
+            RoomData(id=4, name="R4", capacity=40, room_type="LECTURE"),
+        ]
+        teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
+        sections = [
+            SectionData(id=1, name="S1"),
+            SectionData(id=2, name="S2"),
+            SectionData(id=3, name="S3"),
+            SectionData(id=4, name="S4"),
+        ]
+        activities = [
+            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="C", section_id=3, periods_per_week=1, teacher_id=1),
+            ActivityData(id=4, subject_name="D", section_id=4, periods_per_week=1, teacher_id=1),
+        ]
+        constraints = [
+            ConstraintData(
+                id=1,
+                constraint_type="MAX_CONSECUTIVE_PERIODS",
+                is_hard=False,
+                weight=7,
+                teacher_id=1,
+                max_consecutive_periods=3,
+            ),
+        ]
+        si = ScheduleInput(
+            timeslots=timeslots,
+            rooms=rooms,
+            teachers=teachers,
+            sections=sections,
+            activities=activities,
+            constraints=constraints,
+        )
+        placements = [
+            Placement(activity_id=1, timeslot_id=1, room_id=1),
+            Placement(activity_id=2, timeslot_id=2, room_id=2),
+            Placement(activity_id=3, timeslot_id=3, room_id=3),
+            Placement(activity_id=4, timeslot_id=4, room_id=4),
+        ]
+
+        penalty = compute_penalty(placements, si)
+        self.assertGreater(penalty, 0)
+        self.assertEqual(penalty, 7, msg="4 consecutive periods with max=3 should add one excess × weight.")
+
+    def test_preferred_teaching_time_penalty(self):
+        timeslots = [
+            TimeSlotData(id=1, day_of_week=1, period_number=1, start_time="08:00", end_time="09:00"),
+            TimeSlotData(id=2, day_of_week=1, period_number=5, start_time="12:00", end_time="13:00"),
+        ]
+        rooms = [
+            RoomData(id=1, name="R1", capacity=40, room_type="LECTURE"),
+            RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
+        ]
+        teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
+        sections = [SectionData(id=1, name="S1"), SectionData(id=2, name="S2")]
+        activities = [
+            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
+        ]
+        constraints = [
+            ConstraintData(
+                id=2,
+                constraint_type="PREFERRED_TEACHING_TIME",
+                is_hard=False,
+                weight=6,
+                teacher_id=1,
+                preferred_days=frozenset({1, 2}),
+                preferred_period_start=1,
+                preferred_period_end=4,
+            ),
+        ]
+        si = ScheduleInput(
+            timeslots=timeslots,
+            rooms=rooms,
+            teachers=teachers,
+            sections=sections,
+            activities=activities,
+            constraints=constraints,
+        )
+
+        in_window = [Placement(activity_id=1, timeslot_id=1, room_id=1)]
+        out_of_window = [Placement(activity_id=2, timeslot_id=2, room_id=2)]
+
+        self.assertEqual(compute_penalty(in_window, si), 0)
+        self.assertEqual(compute_penalty(out_of_window, si), 6)
+        self.assertGreater(compute_penalty(out_of_window, si), 0)
+
+
+class TestSyntheticDailyLimitFromProfile(unittest.TestCase):
+    """TeacherProfile.max_hours_per_day becomes a soft constraint when no row exists."""
+
+    def test_synthesized_daily_limit_penalty(self):
+        timeslots = [
+            TimeSlotData(id=1, day_of_week=1, period_number=1, start_time="08:00", end_time="09:00"),
+            TimeSlotData(id=2, day_of_week=1, period_number=2, start_time="09:00", end_time="10:00"),
+            TimeSlotData(id=3, day_of_week=1, period_number=3, start_time="10:00", end_time="11:00"),
+        ]
+        rooms = [
+            RoomData(id=1, name="R1", capacity=40, room_type="LECTURE"),
+            RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
+            RoomData(id=3, name="R3", capacity=40, room_type="LECTURE"),
+        ]
+        teachers = [TeacherData(id=1, name="T", max_hours_per_day=2, unavailable_slot_ids=frozenset())]
+        sections = [
+            SectionData(id=1, name="S1"),
+            SectionData(id=2, name="S2"),
+            SectionData(id=3, name="S3"),
+        ]
+        activities = [
+            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="C", section_id=3, periods_per_week=1, teacher_id=1),
+        ]
+        constraints = [
+            ConstraintData(
+                id=-1,
+                constraint_type="MAX_DAILY_HOURS",
+                is_hard=False,
+                weight=10,
+                teacher_id=1,
+                max_daily_periods=2,
+            ),
+        ]
+        si = ScheduleInput(
+            timeslots=timeslots,
+            rooms=rooms,
+            teachers=teachers,
+            sections=sections,
+            activities=activities,
+            constraints=constraints,
+        )
+        placements = [
+            Placement(activity_id=1, timeslot_id=1, room_id=1),
+            Placement(activity_id=2, timeslot_id=2, room_id=2),
+            Placement(activity_id=3, timeslot_id=3, room_id=3),
+        ]
+
+        penalty = compute_penalty(placements, si)
+        self.assertGreater(penalty, 0)
+        self.assertEqual(penalty, 10)
+
+
+class TestModelsIoSyntheticDailyLimit(DjangoTestCase):
+    """models_io injects profile daily limits when no explicit constraint row exists."""
+
+    def test_load_schedule_input_synthesizes_teacher_daily_limit(self):
+        from accounts.models import User
+        from academics.models import ClassSession, Section, Subject, TeacherProfile
+        from core.models import Department, Room, Semester
+        from scheduling.engine.models_io import load_schedule_input
+        from scheduling.models import TimeSlot
+
+        semester = Semester.objects.create(
+            name="Fall 2026 Synth",
+            code="F26S",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        department = Department.objects.create(name="CS", code="CS")
+        section = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=semester,
+            department=department,
+        )
+        subject = Subject.objects.create(
+            name="Math",
+            code="MATH101",
+            lecture_hours_per_week=1,
+            department=department,
+        )
+        teacher_user = User.objects.create_user(
+            username="synth_teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        teacher = TeacherProfile.objects.create(
+            user=teacher_user,
+            employee_id="SYNTH1",
+            max_hours_per_day=3,
+        )
+        ClassSession.objects.create(
+            section=section,
+            subject=subject,
+            teacher=teacher,
+            periods_per_week=1,
+        )
+        TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        Room.objects.create(name="101A", capacity=30, room_type="LECTURE", is_active=True)
+
+        schedule_input = load_schedule_input(semester.id)
+        daily_limits = [
+            c for c in schedule_input.constraints
+            if c.constraint_type == "MAX_DAILY_HOURS" and c.teacher_id == teacher.id
+        ]
+
+        self.assertEqual(len(daily_limits), 1)
+        self.assertFalse(daily_limits[0].is_hard)
+        self.assertEqual(daily_limits[0].max_daily_periods, 3)
+        self.assertLess(daily_limits[0].id, 0)
 
 
 # ---------------------------------------------------------------------------

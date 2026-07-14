@@ -439,6 +439,8 @@ def compute_penalty(
     Soft constraints evaluated:
       MAX_DAILY_HOURS (soft)  — each extra period beyond limit adds `weight` per excess
       NO_ADJACENT_GAPS (soft) — each day-gap in teacher's schedule adds `weight`
+      MAX_CONSECUTIVE_PERIODS (soft) — excess longest consecutive run adds `weight`
+      PREFERRED_TEACHING_TIME (soft) — each out-of-window placement adds `weight`
 
     Hard constraints are NOT counted here (they must be zero by the time
     this function is called).
@@ -495,7 +497,55 @@ def compute_penalty(
                     gaps = _count_gaps(sorted(periods))
                     penalty += gaps * c.weight
 
+        elif c.constraint_type == "MAX_CONSECUTIVE_PERIODS" and c.max_consecutive_periods is not None:
+            if c.teacher_id is not None:
+                teacher_ids = [c.teacher_id]
+            else:
+                teacher_ids = sorted({tid for (tid, _day) in teacher_day_periods})
+
+            for teacher_id in teacher_ids:
+                for day in range(1, 6):
+                    periods = sorted(teacher_day_periods.get((teacher_id, day), []))
+                    longest_run = _longest_consecutive_run(periods)
+                    excess = max(0, longest_run - c.max_consecutive_periods)
+                    penalty += excess * c.weight
+
+        elif c.constraint_type == "PREFERRED_TEACHING_TIME":
+            if c.preferred_period_start is None or c.preferred_period_end is None:
+                continue
+
+            for p in placements:
+                activity = schedule_input.activities_by_id.get(p.activity_id)
+                slot = schedule_input.timeslots_by_id.get(p.timeslot_id)
+                if activity is None or slot is None or activity.teacher_id is None:
+                    continue
+                if c.teacher_id is not None and activity.teacher_id != c.teacher_id:
+                    continue
+
+                outside_preferred_day = bool(c.preferred_days) and slot.day_of_week not in c.preferred_days
+                outside_preferred_period = (
+                    slot.period_number < c.preferred_period_start
+                    or slot.period_number > c.preferred_period_end
+                )
+                if outside_preferred_day or outside_preferred_period:
+                    penalty += c.weight
+
     return penalty
+
+
+def _longest_consecutive_run(sorted_periods: list[int]) -> int:
+    """Return the length of the longest consecutive period run."""
+    if not sorted_periods:
+        return 0
+    longest = 1
+    current = 1
+    for i in range(1, len(sorted_periods)):
+        if sorted_periods[i] == sorted_periods[i - 1] + 1:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 1
+    return longest
 
 
 def _count_gaps(sorted_periods: list[int]) -> int:

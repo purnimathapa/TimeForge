@@ -102,8 +102,14 @@ class ConstraintData:
     constraint_type values that the engine understands:
       MAX_DAILY_HOURS  — uses max_daily_periods
       NO_ADJACENT_GAPS — soft: penalises gaps in a teacher's or section's day
+      MAX_CONSECUTIVE_PERIODS — uses max_consecutive_periods
+      PREFERRED_TEACHING_TIME — uses preferred_days, preferred_period_start/end
       ROOM_TYPE_REQUIRED — enforced via ActivityData.room_type_required (hard)
       CUSTOM — ignored by engine (passed through, not evaluated)
+
+    PREFERRED_TEACHING_TIME parameters come from Constraint.custom_parameters:
+      preferred_days: frozenset[int]  (1=Monday … 5=Friday)
+      preferred_period_start / preferred_period_end: inclusive period range
     """
     id: int
     constraint_type: str
@@ -112,6 +118,10 @@ class ConstraintData:
     teacher_id: Optional[int] = None    # None → applies globally or to non-teacher scope
     section_id: Optional[int] = None
     max_daily_periods: Optional[int] = None
+    max_consecutive_periods: Optional[int] = None
+    preferred_days: frozenset = frozenset()
+    preferred_period_start: Optional[int] = None
+    preferred_period_end: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------

@@ -41,6 +41,36 @@ from .data_types import (
 
 logger = logging.getLogger(__name__)
 
+# Default soft weight for profile-synthesized MAX_DAILY_HOURS constraints.
+_SYNTHETIC_DAILY_LIMIT_WEIGHT = 10
+
+
+def _constraint_data_from_model(constraint) -> ConstraintData:
+    """Map one scheduling.Constraint ORM row to ConstraintData."""
+    preferred_days = frozenset()
+    preferred_period_start = None
+    preferred_period_end = None
+
+    if constraint.constraint_type == "PREFERRED_TEACHING_TIME":
+        params = constraint.custom_parameters or {}
+        preferred_days = frozenset(params.get("preferred_days", []))
+        preferred_period_start = params.get("period_start")
+        preferred_period_end = params.get("period_end")
+
+    return ConstraintData(
+        id=constraint.id,
+        constraint_type=constraint.constraint_type,
+        is_hard=constraint.is_hard,
+        weight=constraint.weight,
+        teacher_id=constraint.teacher_id,
+        section_id=constraint.section_id,
+        max_daily_periods=constraint.max_daily_periods,
+        max_consecutive_periods=constraint.max_consecutive_periods,
+        preferred_days=preferred_days,
+        preferred_period_start=preferred_period_start,
+        preferred_period_end=preferred_period_end,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Public: ORM → ScheduleInput
@@ -139,6 +169,8 @@ def load_schedule_input(semester_id: int) -> ScheduleInput:
         )
         for t in db_teachers
     ]
+    # TeacherProfile.max_hours_per_week is stored for future weekly-limit enforcement;
+    # the engine does not synthesize or evaluate weekly caps in this prompt.
 
     # ---- Sections ----
     from academics.models import Section
@@ -195,18 +227,29 @@ def load_schedule_input(semester_id: int) -> ScheduleInput:
     ]
 
     # ---- Constraints ----
-    constraints = [
-        ConstraintData(
-            id=c.id,
-            constraint_type=c.constraint_type,
-            is_hard=c.is_hard,
-            weight=c.weight,
-            teacher_id=c.teacher_id,
-            section_id=c.section_id,
-            max_daily_periods=c.max_daily_periods,
+    constraints = [_constraint_data_from_model(c) for c in db_constraints]
+
+    teachers_with_explicit_daily_limit = {
+        c.teacher_id
+        for c in constraints
+        if c.constraint_type == "MAX_DAILY_HOURS" and c.teacher_id is not None
+    }
+    # When no explicit MAX_DAILY_HOURS row targets a teacher, synthesize a soft
+    # daily limit from TeacherProfile.max_hours_per_day so profile settings affect
+    # penalty scoring without requiring a separate Constraint row per teacher.
+    for teacher in teachers:
+        if teacher.id in teachers_with_explicit_daily_limit:
+            continue
+        constraints.append(
+            ConstraintData(
+                id=-teacher.id,
+                constraint_type="MAX_DAILY_HOURS",
+                is_hard=False,
+                weight=_SYNTHETIC_DAILY_LIMIT_WEIGHT,
+                teacher_id=teacher.id,
+                max_daily_periods=teacher.max_hours_per_day,
+            )
         )
-        for c in db_constraints
-    ]
 
     logger.info(
         "Loaded schedule input: %d timeslots, %d rooms, %d teachers, "

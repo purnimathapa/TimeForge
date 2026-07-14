@@ -225,6 +225,9 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
         semester = _get_active_semester()
         timetable, all_timetables = _get_timetable(self.request, semester)
 
+        if not self.request.user.is_admin():
+            all_timetables = all_timetables.filter(status=Timetable.Status.PUBLISHED)
+
         ctx['semester'] = semester
         ctx['timetable'] = timetable
         ctx['all_timetables'] = all_timetables
@@ -351,7 +354,8 @@ class TeacherTimetableView(BaseTimetableGridView):
     """
     Teacher timetable grid.
 
-    - Teachers see their own schedule by default.
+    - Teachers see their own schedule by default; any teacher may browse others
+      via ?teacher_id=.
     - Admins see a dropdown to select any teacher.
     """
     filter_type = 'teacher'
@@ -359,14 +363,16 @@ class TeacherTimetableView(BaseTimetableGridView):
     def _get_selected_teacher(self):
         """Resolve the teacher whose timetable to display."""
         user = self.request.user
+        teacher_id = self.request.GET.get('teacher_id')
+
+        if teacher_id:
+            selected = TeacherProfile.objects.filter(
+                pk=teacher_id, is_active=True
+            ).select_related('user').first()
+            if selected:
+                return selected
 
         if user.is_admin():
-            teacher_id = self.request.GET.get('teacher_id')
-            if teacher_id:
-                return TeacherProfile.objects.filter(
-                    pk=teacher_id, is_active=True
-                ).select_related('user').first()
-            # Default: first teacher alphabetically
             return (
                 TeacherProfile.objects
                 .filter(is_active=True)
@@ -374,9 +380,7 @@ class TeacherTimetableView(BaseTimetableGridView):
                 .order_by('user__first_name', 'user__last_name')
                 .first()
             )
-        else:
-            # Teacher role: show own schedule
-            return getattr(user, 'teacher_profile', None)
+        return getattr(user, 'teacher_profile', None)
 
     def get_filter_queryset(self, timetable):
         teacher = self._get_selected_teacher()
@@ -389,15 +393,13 @@ class TeacherTimetableView(BaseTimetableGridView):
         ctx = {
             'selected_teacher': teacher,
             'filter_label': str(teacher) if teacher else 'No teacher selected',
-        }
-
-        if self.request.user.is_admin():
-            ctx['all_teachers'] = (
+            'all_teachers': (
                 TeacherProfile.objects
                 .filter(is_active=True)
                 .select_related('user')
                 .order_by('user__first_name', 'user__last_name')
-            )
+            ),
+        }
 
         return ctx
 
@@ -405,8 +407,8 @@ class TeacherTimetableView(BaseTimetableGridView):
 # ── Room Timetable View ───────────────────────────────────────────────────
 
 class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
-    """Admin-only: room timetable grid with room selector dropdown."""
-    allowed_roles = ['ADMIN']
+    """Room timetable grid with room selector dropdown."""
+    allowed_roles = ['ADMIN', 'TEACHER']
     filter_type = 'room'
 
     def _get_selected_room(self):
@@ -433,8 +435,8 @@ class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
 # ── Section Timetable View ────────────────────────────────────────────────
 
 class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
-    """Admin-only: section timetable grid with section selector dropdown."""
-    allowed_roles = ['ADMIN']
+    """Section timetable grid with section selector dropdown."""
+    allowed_roles = ['ADMIN', 'TEACHER']
     filter_type = 'section'
 
     def _get_selected_section(self):
@@ -618,8 +620,10 @@ class ExportTimetableView(LoginRequiredMixin, View):
         if scope not in self.valid_scopes or file_format not in self.valid_formats:
             raise PermissionDenied
 
-        if scope in {'room', 'section', 'full'} and not request.user.is_admin():
+        if scope == 'full' and not request.user.is_admin():
             raise PermissionDenied
+
+        # TODO: restrict teacher-scope export to the requesting teacher's own profile only.
 
         semester = _get_active_semester()
         timetable, _all_timetables = _get_timetable(request, semester)
@@ -695,11 +699,11 @@ class ExportTimetableView(LoginRequiredMixin, View):
         return list(base_qs), "Full Institution Timetable", "All teachers, rooms, and sections"
 
     def _selected_teacher(self, request):
+        teacher_id = request.GET.get('teacher_id')
+        qs = TeacherProfile.objects.filter(is_active=True).select_related('user')
+        if teacher_id:
+            return qs.filter(pk=teacher_id).first()
         if request.user.is_admin():
-            teacher_id = request.GET.get('teacher_id')
-            qs = TeacherProfile.objects.filter(is_active=True).select_related('user')
-            if teacher_id:
-                return qs.filter(pk=teacher_id).first()
             return qs.order_by('user__first_name', 'user__last_name').first()
         return getattr(request.user, 'teacher_profile', None)
 

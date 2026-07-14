@@ -8,11 +8,24 @@
         return;
     }
 
-    const moveUrl = config.dataset.moveUrl;
+    const timetableId = Number(config.dataset.timetableId);
     const unlockUrl = config.dataset.unlockUrl;
+    const validateBatchUrl = config.dataset.validateBatchUrl;
+    const publishUrl = config.dataset.publishUrl;
+    const discardUrl = config.dataset.discardUrl;
     const selectedRoomId = config.dataset.selectedRoomId || "";
-    let draggedCard = null;
-    let originalCell = null;
+
+    const checkBtn = document.getElementById("checkChangesBtn");
+    const publishBtn = document.getElementById("publishChangesBtn");
+    const discardBtn = document.getElementById("discardChangesBtn");
+    const pendingSummary = document.getElementById("pendingMoveSummary");
+    const validationResults = document.getElementById("batchValidationResults");
+    const penaltyBadge = document.getElementById("timetablePenaltyBadge");
+
+    let pendingMoves = {};
+    let changeSetId = null;
+    let lastCheckValid = false;
+    let dirtySinceCheck = false;
 
     function getCookie(name) {
         const cookies = document.cookie ? document.cookie.split(";") : [];
@@ -59,10 +72,44 @@
         }
     }
 
-    function moveCardBack() {
-        if (draggedCard && originalCell) {
-            originalCell.appendChild(draggedCard);
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken")
+            },
+            body: JSON.stringify(payload)
+        });
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (error) {
+            data = {};
         }
+
+        if (!response.ok || data.ok === false) {
+            throw new Error(data.error || "The timetable update failed.");
+        }
+        return data;
+    }
+
+    function pendingCount() {
+        return Object.keys(pendingMoves).length;
+    }
+
+    function resolveRoomId(cell, card) {
+        return cell.dataset.roomId || selectedRoomId || card.dataset.roomId;
+    }
+
+    function isCommittedPosition(card, cell, roomId) {
+        return cell.id === card.dataset.originalCell && String(roomId) === String(card.dataset.roomId);
+    }
+
+    function setCardPending(card, pending) {
+        card.classList.toggle("is-pending", pending);
     }
 
     function setCardLocked(card, locked) {
@@ -93,106 +140,229 @@
         }
     }
 
-    async function postJson(url, payload) {
-        const response = await fetch(url, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCookie("csrftoken")
-            },
-            body: JSON.stringify(payload)
-        });
-
-        let data = {};
-        try {
-            data = await response.json();
-        } catch (error) {
-            data = {};
-        }
-
-        if (!response.ok || data.ok === false) {
-            throw new Error(data.error || "The timetable update failed.");
-        }
-        return data;
+    function invalidateCheckState() {
+        lastCheckValid = false;
+        dirtySinceCheck = true;
+        changeSetId = null;
+        updateToolbarState();
     }
 
-    grid.addEventListener("dragstart", function (event) {
-        const card = event.target.closest(".activity-card");
-        if (!card) {
+    function updateToolbarState() {
+        const count = pendingCount();
+        if (pendingSummary) {
+            pendingSummary.textContent = count
+                ? count + " staged move" + (count === 1 ? "" : "s") + "."
+                : "No staged moves.";
+        }
+        if (checkBtn) {
+            checkBtn.disabled = count === 0;
+        }
+        if (publishBtn) {
+            publishBtn.disabled = !(lastCheckValid && !dirtySinceCheck && changeSetId);
+        }
+        if (discardBtn) {
+            discardBtn.disabled = count === 0 && !changeSetId;
+        }
+    }
+
+    function showValidationResults(isValid, violations, penaltyScore) {
+        if (!validationResults) {
             return;
         }
 
-        draggedCard = card;
-        originalCell = card.closest(".timetable-drop-zone");
-        card.classList.add("is-dragging");
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", card.dataset.slotId);
-    });
-
-    grid.addEventListener("dragend", function () {
-        if (draggedCard) {
-            draggedCard.classList.remove("is-dragging");
+        validationResults.classList.remove("d-none", "is-valid", "is-invalid");
+        if (isValid) {
+            validationResults.classList.add("is-valid");
+            validationResults.innerHTML = "<strong>Batch check passed.</strong> Penalty score: " + penaltyScore + ".";
+        } else {
+            validationResults.classList.add("is-invalid");
+            const items = violations.map(function (violation) {
+                return "<li>" + violation + "</li>";
+            }).join("");
+            validationResults.innerHTML = "<strong>Conflicts found.</strong><ul>" + items + "</ul>";
         }
-        grid.querySelectorAll(".drop-zone-active").forEach(function (cell) {
-            cell.classList.remove("drop-zone-active");
-        });
-        draggedCard = null;
-        originalCell = null;
-    });
+    }
 
-    grid.addEventListener("dragover", function (event) {
-        const cell = event.target.closest(".timetable-drop-zone");
-        if (!cell || !draggedCard) {
+    function clearValidationResults() {
+        if (!validationResults) {
             return;
         }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        cell.classList.add("drop-zone-active");
-    });
+        validationResults.classList.add("d-none");
+        validationResults.classList.remove("is-valid", "is-invalid");
+        validationResults.innerHTML = "";
+    }
 
-    grid.addEventListener("dragleave", function (event) {
-        const cell = event.target.closest(".timetable-drop-zone");
-        if (cell && !cell.contains(event.relatedTarget)) {
-            cell.classList.remove("drop-zone-active");
-        }
-    });
-
-    grid.addEventListener("drop", async function (event) {
-        const cell = event.target.closest(".timetable-drop-zone");
-        if (!cell || !draggedCard) {
+    function updatePenaltyBadge(penaltyScore) {
+        if (!penaltyBadge) {
             return;
         }
-
-        event.preventDefault();
-        cell.classList.remove("drop-zone-active");
-
-        const roomId = cell.dataset.roomId || selectedRoomId || draggedCard.dataset.roomId;
-        if (!roomId) {
-            showToast("Choose a room-specific grid before moving this slot.", "warning");
-            moveCardBack();
-            return;
+        if (penaltyScore === 0) {
+            penaltyBadge.className = "badge bg-success";
+            penaltyBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>No Conflicts';
+        } else {
+            penaltyBadge.className = "badge bg-warning text-dark";
+            penaltyBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Penalty: ' + penaltyScore;
         }
+    }
 
-        const card = draggedCard;
-        cell.appendChild(card);
-
-        try {
-            const data = await postJson(moveUrl, {
-                slot_id: card.dataset.slotId,
+    function stageMove(card, cell, roomId) {
+        const slotId = card.dataset.slotId;
+        if (isCommittedPosition(card, cell, roomId)) {
+            delete pendingMoves[slotId];
+            setCardPending(card, false);
+        } else {
+            pendingMoves[slotId] = {
+                slot_id: Number(slotId),
                 target_day: Number(cell.dataset.day),
                 target_period: Number(cell.dataset.period),
-                target_room: Number(roomId)
-            });
-            card.dataset.roomId = String(data.target_room);
-            card.dataset.originalCell = cell.id;
-            setCardLocked(card, true);
-            showToast("Slot moved and locked.", "success");
-        } catch (error) {
-            moveCardBack();
-            showToast(error.message || "Could not move this slot.", "danger");
+                target_room: Number(roomId),
+                target_cell_id: cell.id
+            };
+            setCardPending(card, true);
         }
-    });
+        invalidateCheckState();
+        clearValidationResults();
+        updateToolbarState();
+    }
+
+    function revertAllPendingMoves() {
+        Object.keys(pendingMoves).forEach(function (slotId) {
+            const card = grid.querySelector('.activity-card[data-slot-id="' + slotId + '"]');
+            if (!card) {
+                return;
+            }
+            const originalCell = document.getElementById(card.dataset.originalCell);
+            if (originalCell) {
+                originalCell.appendChild(card);
+            }
+            setCardPending(card, false);
+        });
+        pendingMoves = {};
+        lastCheckValid = false;
+        dirtySinceCheck = false;
+        changeSetId = null;
+        clearValidationResults();
+        updateToolbarState();
+    }
+
+    function handleSortableEnd(evt) {
+        const card = evt.item;
+        const cell = evt.to;
+        if (!card || !cell || !cell.classList.contains("timetable-drop-zone")) {
+            return;
+        }
+
+        const roomId = resolveRoomId(cell, card);
+        if (!roomId) {
+            showToast("Choose a room-specific grid before moving this slot.", "warning");
+            const originalCell = document.getElementById(card.dataset.originalCell);
+            if (originalCell) {
+                originalCell.appendChild(card);
+            }
+            return;
+        }
+
+        stageMove(card, cell, roomId);
+    }
+
+    async function checkChanges() {
+        const moves = Object.values(pendingMoves);
+        try {
+            const data = await postJson(validateBatchUrl, {
+                timetable_id: timetableId,
+                moves: moves
+            });
+            changeSetId = data.change_set_id;
+            lastCheckValid = data.is_valid;
+            dirtySinceCheck = false;
+            showValidationResults(data.is_valid, data.violations || [], data.penalty_score);
+            if (data.is_valid) {
+                showToast("Batch check passed. You can publish these moves.", "success");
+            } else {
+                showToast("Batch check found conflicts. Review the list and adjust moves.", "danger");
+            }
+            updateToolbarState();
+        } catch (error) {
+            showToast(error.message || "Could not validate staged moves.", "danger");
+        }
+    }
+
+    async function publishChanges() {
+        if (!changeSetId || !lastCheckValid || dirtySinceCheck) {
+            showToast("Run Check Changes before publishing.", "warning");
+            return;
+        }
+
+        try {
+            const data = await postJson(publishUrl, { change_set_id: changeSetId });
+            Object.keys(pendingMoves).forEach(function (slotId) {
+                const card = grid.querySelector('.activity-card[data-slot-id="' + slotId + '"]');
+                const move = pendingMoves[slotId];
+                if (!card || !move) {
+                    return;
+                }
+                card.dataset.originalCell = move.target_cell_id;
+                card.dataset.roomId = String(move.target_room);
+                setCardPending(card, false);
+                setCardLocked(card, true);
+            });
+            pendingMoves = {};
+            changeSetId = null;
+            lastCheckValid = false;
+            dirtySinceCheck = false;
+            clearValidationResults();
+            updatePenaltyBadge(data.penalty_score);
+            updateToolbarState();
+            showToast("Staged moves published and locked.", "success");
+        } catch (error) {
+            showToast(error.message || "Could not publish staged moves.", "danger");
+        }
+    }
+
+    async function discardChanges() {
+        const discardId = changeSetId;
+        revertAllPendingMoves();
+        if (discardId) {
+            try {
+                await postJson(discardUrl, { change_set_id: discardId });
+            } catch (error) {
+                showToast(error.message || "Could not discard the draft change set.", "warning");
+            }
+        }
+        updateToolbarState();
+        showToast("Staged moves discarded.", "secondary");
+    }
+
+    function initSortable() {
+        if (!window.Sortable) {
+            showToast("SortableJS failed to load. Drag-and-drop editing is unavailable.", "danger");
+            return;
+        }
+
+        grid.querySelectorAll(".timetable-drop-zone").forEach(function (cell) {
+            Sortable.create(cell, {
+                group: "timetable-slots",
+                animation: 150,
+                draggable: ".activity-card",
+                ghostClass: "sortable-ghost",
+                chosenClass: "sortable-chosen",
+                delay: 100,
+                delayOnTouchOnly: true,
+                touchStartThreshold: 3,
+                onEnd: handleSortableEnd
+            });
+        });
+    }
+
+    if (checkBtn) {
+        checkBtn.addEventListener("click", checkChanges);
+    }
+    if (publishBtn) {
+        publishBtn.addEventListener("click", publishChanges);
+    }
+    if (discardBtn) {
+        discardBtn.addEventListener("click", discardChanges);
+    }
 
     grid.addEventListener("click", async function (event) {
         const button = event.target.closest(".unlock-slot-button");
@@ -215,7 +385,6 @@
         }
     });
 
-    if (!("draggable" in document.createElement("span"))) {
-        showToast("This browser does not support drag-and-drop editing.", "warning");
-    }
+    initSortable();
+    updateToolbarState();
 })();

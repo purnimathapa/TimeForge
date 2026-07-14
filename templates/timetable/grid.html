@@ -14,8 +14,11 @@
 <div class="container-fluid">
     {% if user.is_admin and timetable %}
     <div id="timetableEditorConfig"
-         data-move-url="{% url 'timetable:move_slot' %}"
+         data-timetable-id="{{ timetable.pk }}"
          data-unlock-url="{% url 'timetable:unlock_slot' %}"
+         data-validate-batch-url="{% url 'timetable:validate_batch' %}"
+         data-publish-url="{% url 'timetable:publish_change_set' %}"
+         data-discard-url="{% url 'timetable:discard_change_set' %}"
          data-filter-type="{{ filter_type }}"
          {% if selected_room %}data-selected-room-id="{{ selected_room.pk }}"{% endif %}>
     </div>
@@ -36,9 +39,9 @@
                 <div class="d-flex flex-wrap justify-content-md-end align-items-center gap-2">
                     <span class="badge bg-secondary">{{ slot_count }} session{{ slot_count|pluralize }}</span>
                     {% if timetable.penalty_score == 0 %}
-                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>No Conflicts</span>
+                        <span class="badge bg-success" id="timetablePenaltyBadge"><i class="bi bi-check-circle me-1"></i>No Conflicts</span>
                     {% else %}
-                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Penalty: {{ timetable.penalty_score }}</span>
+                        <span class="badge bg-warning text-dark" id="timetablePenaltyBadge"><i class="bi bi-exclamation-triangle me-1"></i>Penalty: {{ timetable.penalty_score }}</span>
                     {% endif %}
                     <div class="btn-group btn-group-sm" role="group" aria-label="Export timetable">
                         <a class="btn btn-outline-danger"
@@ -150,6 +153,24 @@
         {% endif %}
     </div>
 
+    {% if user.is_admin and timetable and slot_count %}
+    <div class="timetable-editor-toolbar d-flex flex-wrap align-items-center gap-2 mt-3">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Batch editor actions">
+            <button type="button" class="btn btn-outline-primary" id="checkChangesBtn" disabled>
+                <i class="bi bi-search me-1"></i>Check Changes
+            </button>
+            <button type="button" class="btn btn-success" id="publishChangesBtn" disabled>
+                <i class="bi bi-check2-circle me-1"></i>Publish
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="discardChangesBtn" disabled>
+                <i class="bi bi-x-circle me-1"></i>Discard
+            </button>
+        </div>
+        <span class="text-muted small" id="pendingMoveSummary">No staged moves.</span>
+    </div>
+    <div id="batchValidationResults" class="batch-validation-results mt-2 d-none" role="alert"></div>
+    {% endif %}
+
     {# ── No Semester ── #}
     {% if not semester %}
     <div class="card shadow-sm mt-4">
@@ -193,7 +214,7 @@
     {# ── Timetable Grid ── #}
     {% else %}
     <div class="timetable-grid-wrapper mt-2">
-        <table class="timetable-grid" id="timetableGrid">
+        <table class="timetable-grid is-editable" id="timetableGrid">
             <thead>
                 <tr>
                     <th class="period-header">Period</th>
@@ -223,11 +244,10 @@
                                 data-period="{{ period.number }}"
                                 {% if selected_room %}data-room-id="{{ selected_room.pk }}"{% endif %}>
                                 {% for slot in cell_slots %}
-                                <div class="activity-card {{ slot.colour_class }} {% if slot.is_locked %}is-locked{% endif %}"
+                                <div class="activity-card {{ slot.colour_class }}{% if slot.is_locked %} is-locked{% endif %}"
                                      data-slot-id="{{ slot.pk }}"
                                      data-room-id="{{ slot.room_id }}"
-                                     data-original-cell="cell-{{ day.number }}-{{ period.number }}"
-                                     {% if user.is_admin %}draggable="true"{% endif %}>
+                                     data-original-cell="cell-{{ day.number }}-{{ period.number }}">
                                     <div class="activity-card-header">
                                         {% if slot.is_locked %}
                                             <span class="lock-indicator" title="Locked manual placement">
@@ -285,6 +305,7 @@
 
 {% block extra_js %}
 {% if user.is_admin and timetable %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" crossorigin="anonymous"></script>
 <script src="{% static 'js/timetable_editor.js' %}"></script>
 {% endif %}
 {% endblock %}

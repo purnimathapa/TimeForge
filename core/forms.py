@@ -1,19 +1,38 @@
 from django import forms
-from .models import Department, Room, Semester
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit
 
-class DepartmentForm(forms.ModelForm):
+from core.models import Department, Room, Semester
+from core.tenant import school_filter
+
+
+class SchoolScopedFormMixin:
+    """Pass school into ModelChoiceField querysets."""
+
+    def __init__(self, *args, school=None, **kwargs):
+        self.school = school
+        super().__init__(*args, **kwargs)
+
+
+class DepartmentForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
         model = Department
         fields = ['name', 'code', 'description', 'is_active']
 
-class RoomForm(forms.ModelForm):
+
+class RoomForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
         model = Room
         fields = ['name', 'code', 'building', 'floor', 'capacity', 'room_type', 'department', 'is_active']
 
-class SemesterForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.school is not None:
+            self.fields['department'].queryset = Department.objects.filter(
+                is_active=True,
+                school=self.school,
+            )
+
+
+class SemesterForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
         model = Semester
         fields = ['name', 'code', 'start_date', 'end_date', 'is_active']

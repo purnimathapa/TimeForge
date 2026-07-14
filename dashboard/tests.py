@@ -48,12 +48,13 @@ class AdminDashboardTimetableStateTests(TestCase):
 
 class TeacherDashboardPublishedOnlyTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="dash-f26t")
         self.teacher_user = User.objects.create_user(
             username="teacher",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
-        self.school = get_test_school(code="dash-f26t")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26T",

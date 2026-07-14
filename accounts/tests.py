@@ -42,6 +42,8 @@ class ClassRepCreateViewTests(TestCase):
 
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.school = get_test_school(code="acct-f26cr")
+        self.admin.school = self.school
+        self.admin.save(update_fields=['school'])
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26CR",

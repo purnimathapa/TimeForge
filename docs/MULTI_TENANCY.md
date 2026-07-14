@@ -41,11 +41,11 @@ Tenant is derived through the chain listed below. Do **not** add duplicate `scho
 | `DraftChangeSet`    | timetable  | `timetable → semester → school`                          |
 | `DraftMove`         | timetable  | `change_set → timetable → … → school`                    |
 
-### Global / undecided in 09A
+### Global / institution-wide in 09B
 
-| Model      | App        | Status in 09A                                            |
+| Model      | App        | Status                                                   |
 |------------|------------|----------------------------------------------------------|
-| `TimeSlot` | scheduling | **Institution-wide calendar grid** — no `school` FK yet. Prompt 09B will document whether timeslots are global or per-school. Engine loads all active slots today. |
+| `TimeSlot` | scheduling | **Global shared calendar grid** — see MULTI_TENANCY.md   |
 
 ## Room modeling (v2 Gap 4.5)
 
@@ -74,11 +74,40 @@ Tenant is derived through the chain listed below. Do **not** add duplicate `scho
 2. **Data migration** — Create Default School; backfill all existing departments, rooms, semesters, and non-superuser users.
 3. **Non-null core FKs** — Alter `Department`, `Room`, `Semester` to `null=False`. `User.school` stays nullable for superusers.
 
-## Query scoping (Prompt 09B — not yet implemented)
+## Query scoping (Prompt 09B)
 
-Views will filter via `request.user.school` and middleware-attached `request.school`. See `docs/cursor-prompts/09b-multitenancy-scoping.md`.
+`TenantMiddleware` (registered after `AuthenticationMiddleware`) sets `request.school`
+from `request.user.school` on every request. Login and logout are unaffected.
 
-Superuser behavior when `request.school is None`: documented in 09B (see all tenants vs require school selection).
+### Helper: `core.tenant.school_filter(qs, request, field='school')`
+
+| Caller context | Behavior |
+|----------------|----------|
+| Superuser, `request.school is None` | Returns queryset **unfiltered** (cross-tenant operator) |
+| Authenticated user with `request.school` set | Returns `qs.filter(**{field: request.school})` |
+| Everyone else | Returns `qs.none()` |
+
+Views, dashboard aggregates, and form dropdowns use this helper (or `filter_by_school`
+with a transitive lookup such as `department__school`).
+
+### `TimeSlot` — institution-wide calendar (09B decision)
+
+`TimeSlot` remains **global** (no `school` FK). All schools share the same weekly
+period grid; tenant isolation applies to *what is scheduled* (rooms, sections,
+timetables), not to the abstract period definitions. Admins at any school manage
+the same timeslot catalogue until a per-school calendar is added in a follow-up.
+
+### Superuser without `request.school`
+
+- **Lists:** sees all tenants' data (bootstrap / support mode).
+- **Creates:** should assign themselves a school in admin before using in-app
+  CRUD, or use Django admin where school can be set explicitly.
+- **Login:** works normally; middleware leaves `request.school = None`.
+
+### Non-superuser staff
+
+Must have `User.school` set. Middleware provides `request.school`; views return
+empty lists or 404 (not 403) when accessing another tenant's PK.
 
 ## Out of scope (09A)
 

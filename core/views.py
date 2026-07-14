@@ -3,6 +3,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
+from core.mixins import SchoolFormMixin, SchoolScopedMixin
 from .models import Department, Room, Semester
 from .forms import DepartmentForm, RoomForm, SemesterForm
 from django.shortcuts import redirect
@@ -17,7 +18,7 @@ class HomeView(TemplateView):
         return super().get(request, *args, **kwargs)
 
 # Optional Mixin for common CRUD patterns
-class CoreAdminCRUDMixin(RoleRequiredMixin):
+class CoreAdminCRUDMixin(SchoolScopedMixin, SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20
 

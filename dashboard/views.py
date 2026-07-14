@@ -2,6 +2,7 @@ from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from core.models import Department, Room, Semester
+from core.tenant import filter_by_school, school_filter
 from academics.models import Subject, Section, TeacherProfile
 from scheduling.models import Constraint
 
@@ -21,18 +22,29 @@ class DashboardView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         role = self.request.user.role
+        request = self.request
 
         if role == 'ADMIN':
             from timetable.models import Timetable
 
-            context['department_count'] = Department.objects.count()
-            context['room_count'] = Room.objects.count()
-            context['teacher_count'] = TeacherProfile.objects.count()
-            context['subject_count'] = Subject.objects.count()
-            context['section_count'] = Section.objects.count()
-            context['constraint_count'] = Constraint.objects.filter(is_active=True).count()
+            context['department_count'] = school_filter(Department.objects.all(), request).count()
+            context['room_count'] = school_filter(Room.objects.all(), request).count()
+            context['teacher_count'] = filter_by_school(
+                TeacherProfile.objects.all(), request, 'user__school'
+            ).count()
+            context['subject_count'] = filter_by_school(
+                Subject.objects.all(), request, 'department__school'
+            ).count()
+            context['section_count'] = filter_by_school(
+                Section.objects.all(), request, 'department__school'
+            ).count()
+            context['constraint_count'] = filter_by_school(
+                Constraint.objects.filter(is_active=True), request, 'semester__school'
+            ).count()
 
-            active_semester = Semester.objects.filter(is_active=True).first()
+            active_semester = school_filter(
+                Semester.objects.filter(is_active=True), request
+            ).first()
             context['active_semester'] = active_semester
             latest_timetable = None
             if active_semester:
@@ -55,7 +67,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         elif role in ('TEACHER', 'CLASS_REP'):
             from timetable.models import Timetable
 
-            active_semester = Semester.objects.filter(is_active=True).first()
+            active_semester = school_filter(
+                Semester.objects.filter(is_active=True), request
+            ).first()
             context['active_semester'] = active_semester
             if active_semester:
                 context['has_timetable'] = Timetable.objects.filter(

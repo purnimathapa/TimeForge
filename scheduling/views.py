@@ -3,19 +3,26 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
+from core.mixins import SchoolFormMixin
+from core.tenant import filter_by_school
 from .models import TimeSlot, Constraint
 from .forms import TimeSlotForm, ConstraintForm
 
-class SchedulingAdminCRUDMixin(RoleRequiredMixin):
+class SchedulingAdminCRUDMixin(SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20
 
-# -- TimeSlot --
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.model is Constraint:
+            qs = filter_by_school(qs, self.request, 'semester__school')
+        return qs
+
+# -- TimeSlot (institution-wide calendar grid; not school-scoped) --
 class TimeSlotListView(SchedulingAdminCRUDMixin, ListView):
     model = TimeSlot
     def get_queryset(self):
-        qs = super().get_queryset()
-        return qs
+        return super().get_queryset()
 
 class TimeSlotCreateView(SchedulingAdminCRUDMixin, CreateView):
     model = TimeSlot

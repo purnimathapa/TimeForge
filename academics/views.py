@@ -4,13 +4,30 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
+from core.mixins import SchoolFormMixin
+from core.tenant import filter_by_school
 from .models import Subject, Section, TeacherProfile, ClassSession
 from scheduling.models import TeacherAvailability
 from .forms import SubjectForm, SectionForm, TeacherProfileForm, TeacherCreationForm, ClassSessionForm
 
-class AcademicsAdminCRUDMixin(RoleRequiredMixin):
+ACADEMICS_SCHOOL_LOOKUPS = {
+    Subject: 'department__school',
+    Section: 'department__school',
+    TeacherProfile: 'user__school',
+    ClassSession: 'section__department__school',
+}
+
+
+class AcademicsAdminCRUDMixin(SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        lookup = ACADEMICS_SCHOOL_LOOKUPS.get(self.model)
+        if lookup:
+            qs = filter_by_school(qs, self.request, lookup)
+        return qs
 
 # -- Subject --
 class SubjectListView(AcademicsAdminCRUDMixin, ListView):
@@ -94,6 +111,11 @@ class TeacherCreateView(AcademicsAdminCRUDMixin, CreateView):
     form_class = TeacherCreationForm
     template_name = 'academics/teacher_form.html'
     success_url = reverse_lazy('academics:teacher_list')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['school'] = getattr(self.request, 'school', None)
+        return kwargs
 
     def form_valid(self, form):
         self.object = form.save()
@@ -194,4 +216,3 @@ class TeacherPortalView(RoleRequiredMixin, TemplateView):
             return redirect('academics:teacher_portal')
             
         return self.render_to_response(context)
-

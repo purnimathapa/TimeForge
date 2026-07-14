@@ -76,7 +76,7 @@ def _constraint_data_from_model(constraint) -> ConstraintData:
 # Public: ORM → ScheduleInput
 # ---------------------------------------------------------------------------
 
-def load_schedule_input(semester_id: int) -> ScheduleInput:
+def load_schedule_input(semester_id: int, school_id: int | None = None) -> ScheduleInput:
     """
     Load all data needed by the engine for a given semester and return a
     ScheduleInput populated with pure-Python dataclasses.
@@ -84,7 +84,8 @@ def load_schedule_input(semester_id: int) -> ScheduleInput:
     Raises
     ------
     ValueError
-        If the semester does not exist or has no active timeslots.
+        If the semester does not exist, has no active timeslots, or does not
+        belong to the provided school_id.
 
     Usage
     -----
@@ -104,6 +105,11 @@ def load_schedule_input(semester_id: int) -> ScheduleInput:
         semester = Semester.objects.get(pk=semester_id)
     except Semester.DoesNotExist:
         raise ValueError(f"Semester with id={semester_id} does not exist.")
+
+    if school_id is not None and semester.school_id != school_id:
+        raise ValueError(
+            f"Semester with id={semester_id} does not belong to school id={school_id}."
+        )
 
     logger.info("Loading schedule input for semester %r (id=%d)", semester.name, semester_id)
 

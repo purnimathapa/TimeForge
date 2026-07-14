@@ -26,6 +26,11 @@ class AdminCreateView(LoginRequiredMixin, RoleRequiredMixin, CreateView):
     template_name = 'accounts/admin_form.html'
     success_url = reverse_lazy('home')
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['school'] = getattr(self.request, 'school', None)
+        return kwargs
+
     def form_valid(self, form):
         messages.success(
             self.request,
@@ -40,6 +45,11 @@ class ClassRepCreateView(LoginRequiredMixin, RoleRequiredMixin, CreateView):
     form_class = ClassRepCreationForm
     template_name = 'accounts/class_rep_form.html'
     success_url = reverse_lazy('home')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['school'] = getattr(self.request, 'school', None)
+        return kwargs
 
     def form_valid(self, form):
         messages.success(

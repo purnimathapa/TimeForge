@@ -27,6 +27,7 @@ class GetTimetableResolutionTests(TestCase):
             username="teacher",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
         self.draft = Timetable.objects.create(
             semester=self.semester,
@@ -129,6 +130,7 @@ class TimetablePublishWorkflowTests(TestCase):
             username="pub_teacher",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
         TeacherProfile.objects.create(user=self.teacher, employee_id="PT1")
 
@@ -271,15 +273,18 @@ class TimetablePublishWorkflowTests(TestCase):
 
 class TeacherReadAccessTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="f26r")
         self.teacher_user = User.objects.create_user(
             username="viewer_teacher",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
         self.other_teacher_user = User.objects.create_user(
             username="other_teacher",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
         self.teacher = TeacherProfile.objects.create(
             user=self.teacher_user,
@@ -290,7 +295,6 @@ class TeacherReadAccessTests(TestCase):
             employee_id="VT002",
         )
 
-        self.school = get_test_school(code="f26r")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26R",
@@ -426,6 +430,7 @@ class ClassRepReadAccessTests(TestCase):
             username="classrep",
             password="password",
             role=User.RoleChoices.CLASS_REP,
+            school=self.school,
         )
         self.class_rep_profile = ClassRepProfile.objects.create(
             user=self.cr_user,
@@ -435,6 +440,7 @@ class ClassRepReadAccessTests(TestCase):
             username="teacher1",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=self.school,
         )
         self.teacher = TeacherProfile.objects.create(
             user=self.teacher_user,

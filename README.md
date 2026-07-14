@@ -55,7 +55,7 @@ TimeForge/
 ├── core/
 ├── templates/
 ├── static/
-├── config/
+├── timeforge/
 ├── manage.py
 ├── requirements.txt
 └── README.md
@@ -99,26 +99,9 @@ pip install -r requirements.txt
 
 ### Configure PostgreSQL
 
-Create a PostgreSQL database and update the database credentials inside:
+Create a PostgreSQL database, then copy `.env.example` to `.env` and set your database credentials (`DB_USER=your_username`, `DB_PASSWORD=your_password`). See `.env.example` for all required environment variables — settings load them via `python-decouple`.
 
-```
-config/settings.py
-```
-
-Example:
-
-```python
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "timeforge",
-        "USER": "username",
-        "PASSWORD": "password",
-        "HOST": "localhost",
-        "PORT": "5432",
-    }
-}
-```
+For a full local setup guide, see [docs/SETUP.md](docs/SETUP.md).
 
 ### Apply Migrations
 

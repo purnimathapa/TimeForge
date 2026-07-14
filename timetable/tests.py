@@ -6,7 +6,7 @@ from academics.models import Section, Subject, TeacherProfile, ClassSession
 from accounts.models import User
 from core.models import Room, Semester, Department
 from scheduling.models import Constraint, TimeSlot
-from timetable.models import Timetable, TimetableSlot
+from timetable.models import DraftChangeSet, Timetable, TimetableSlot
 from timetable.views import _get_timetable
 
 
@@ -104,6 +104,8 @@ class TimetablePermissionTests(TestCase):
         # Write endpoints
         self.assert_admin_only('timetable:move_slot', post=True, data={})
         self.assert_admin_only('timetable:unlock_slot', post=True, data={})
+        self.assert_admin_only('timetable:validate_batch', post=True, data={})
+        self.assert_admin_only('timetable:publish_change_set', post=True, data={})
 
 
 class TeacherReadAccessTests(TestCase):
@@ -341,6 +343,234 @@ class ClassRepReadAccessTests(TestCase):
             reverse('timetable:export', kwargs={'scope': 'full', 'file_format': 'pdf'}),
         )
         self.assertEqual(response.status_code, 403)
+
+
+class BatchEditorTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.teacher_user = User.objects.create_user(
+            username="batch_teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        self.teacher = TeacherProfile.objects.create(
+            user=self.teacher_user,
+            employee_id="BT001",
+        )
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26B",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE")
+        self.section1 = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.section2 = Section.objects.create(
+            name="10B",
+            year=1,
+            section_label="B",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.subject1 = Subject.objects.create(
+            name="Math",
+            code="MATH101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.subject2 = Subject.objects.create(
+            name="Physics",
+            code="PHY101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.timeslot1 = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        self.timeslot2 = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=2,
+            start_time="10:00",
+            end_time="11:00",
+            is_active=True,
+        )
+        self.timeslot3 = TimeSlot.objects.create(
+            day_of_week=2,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        self.session1 = ClassSession.objects.create(
+            section=self.section1,
+            subject=self.subject1,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        self.session2 = ClassSession.objects.create(
+            section=self.section2,
+            subject=self.subject2,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        self.timetable = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+        self.slot1 = TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=self.session1,
+            timeslot=self.timeslot1,
+            room=self.room1,
+            teacher=self.teacher,
+        )
+        self.slot2 = TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=self.session2,
+            timeslot=self.timeslot2,
+            room=self.room2,
+            teacher=self.teacher,
+        )
+        self.client.login(username="admin", password="password")
+
+    def _validate(self, moves):
+        return self.client.post(
+            reverse('timetable:validate_batch'),
+            data=json.dumps({'timetable_id': self.timetable.pk, 'moves': moves}),
+            content_type='application/json',
+        )
+
+    def test_validate_empty_moves_is_valid(self):
+        response = self._validate([])
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['is_valid'])
+        self.assertEqual(data['violations'], [])
+        self.assertGreaterEqual(data['penalty_score'], 0)
+        self.assertTrue(DraftChangeSet.objects.filter(pk=data['change_set_id'], is_valid=True).exists())
+
+    def test_batch_detects_combined_teacher_conflict(self):
+        moves = [
+            {
+                'slot_id': self.slot1.pk,
+                'target_day': self.timeslot2.day_of_week,
+                'target_period': self.timeslot2.period_number,
+                'target_room': self.room1.pk,
+            },
+            {
+                'slot_id': self.slot2.pk,
+                'target_day': self.timeslot2.day_of_week,
+                'target_period': self.timeslot2.period_number,
+                'target_room': self.room2.pk,
+            },
+        ]
+        response = self._validate(moves)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['is_valid'])
+        self.assertTrue(data['violations'])
+
+    def test_publish_after_valid_check_updates_slots(self):
+        response = self._validate([
+            {
+                'slot_id': self.slot1.pk,
+                'target_day': self.timeslot3.day_of_week,
+                'target_period': self.timeslot3.period_number,
+                'target_room': self.room1.pk,
+            },
+        ])
+        change_set_id = response.json()['change_set_id']
+        self.assertTrue(response.json()['is_valid'])
+
+        publish_response = self.client.post(
+            reverse('timetable:publish_change_set'),
+            data=json.dumps({'change_set_id': change_set_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(publish_response.status_code, 200)
+        self.assertTrue(publish_response.json()['ok'])
+
+        self.slot1.refresh_from_db()
+        self.assertEqual(self.slot1.timeslot_id, self.timeslot3.pk)
+        self.assertEqual(self.slot1.room_id, self.room1.pk)
+        self.assertTrue(self.slot1.is_locked)
+        self.assertTrue(self.slot1.is_manual)
+
+        change_set = DraftChangeSet.objects.get(pk=change_set_id)
+        self.assertTrue(change_set.is_published)
+        self.assertEqual(change_set.moves.count(), 0)
+
+    def test_discard_does_not_change_slots(self):
+        original_timeslot_id = self.slot1.timeslot_id
+        response = self._validate([
+            {
+                'slot_id': self.slot1.pk,
+                'target_day': self.timeslot2.day_of_week,
+                'target_period': self.timeslot2.period_number,
+                'target_room': self.room1.pk,
+            },
+        ])
+        change_set_id = response.json()['change_set_id']
+
+        discard_response = self.client.post(
+            reverse('timetable:discard_change_set'),
+            data=json.dumps({'change_set_id': change_set_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(discard_response.status_code, 200)
+
+        self.slot1.refresh_from_db()
+        self.assertEqual(self.slot1.timeslot_id, original_timeslot_id)
+
+        change_set = DraftChangeSet.objects.get(pk=change_set_id)
+        self.assertTrue(change_set.is_discarded)
+        self.assertEqual(change_set.moves.count(), 0)
+
+    def test_publish_without_valid_check_returns_400(self):
+        change_set = DraftChangeSet.objects.create(
+            timetable=self.timetable,
+            created_by=self.admin,
+            is_valid=False,
+        )
+        response = self.client.post(
+            reverse('timetable:publish_change_set'),
+            data=json.dumps({'change_set_id': change_set.pk}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['ok'])
+
+    def test_teacher_cannot_validate_or_publish(self):
+        self.client.login(username="batch_teacher", password="password")
+        validate_response = self._validate([])
+        self.assertEqual(validate_response.status_code, 403)
+
+        change_set = DraftChangeSet.objects.create(
+            timetable=self.timetable,
+            created_by=self.admin,
+            is_valid=True,
+        )
+        publish_response = self.client.post(
+            reverse('timetable:publish_change_set'),
+            data=json.dumps({'change_set_id': change_set.pk}),
+            content_type='application/json',
+        )
+        self.assertEqual(publish_response.status_code, 403)
 
 
 class TimetableIntegrationTests(TestCase):

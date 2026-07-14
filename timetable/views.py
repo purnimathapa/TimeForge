@@ -20,6 +20,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView
@@ -28,12 +29,17 @@ from accounts.mixins import RoleRequiredMixin
 from academics.models import TeacherProfile, Section
 from core.models import Room, Semester
 from scheduling.engine.algorithm import run_scheduler
-from scheduling.engine.constraints import compute_penalty, validate_single_placement
+from scheduling.engine.constraints import (
+    compute_penalty,
+    find_hard_violations,
+    validate_single_placement,
+)
 from scheduling.engine.data_types import Placement
 from scheduling.engine.models_io import load_schedule_input, placements_to_slot_dicts
 from scheduling.models import TimeSlot, Constraint
 from .exports import export_timetable_pdf, export_timetable_xlsx
-from .models import Timetable, TimetableSlot
+from .models import DraftChangeSet, DraftMove, Timetable, TimetableSlot
+from .services.editor import MoveParseError, build_hypothetical_placements, parse_move_payloads
 
 
 # ── Fixed subject‑colour palette (10 colours) ─────────────────────────────
@@ -477,7 +483,10 @@ class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
 # ── Drag-and-Drop Editor Endpoints ────────────────────────────────────────
 
 class MoveSlotView(RoleRequiredMixin, View):
-    """Admin-only JSON endpoint that validates and applies one slot move."""
+    """Admin-only JSON endpoint that validates and applies one slot move.
+
+    Deprecated after batch editor (Prompt 06B) — use validate_batch + publish_change_set.
+    """
     allowed_roles = ['ADMIN']
 
     def post(self, request, *args, **kwargs):
@@ -598,6 +607,188 @@ class UnlockSlotView(RoleRequiredMixin, View):
         slot.is_manual = False
         slot.save(update_fields=['is_locked', 'is_manual'])
         return JsonResponse({'ok': True, 'slot_id': slot.pk, 'is_locked': False, 'is_manual': False})
+
+
+class ValidateBatchView(RoleRequiredMixin, View):
+    """Admin-only JSON endpoint that validates a batch of staged slot moves."""
+    allowed_roles = ['ADMIN']
+
+    def post(self, request, *args, **kwargs):
+        payload = _json_body(request)
+        if payload is None:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON body.'}, status=400)
+
+        timetable_id = payload.get('timetable_id')
+        moves_raw = payload.get('moves')
+        if timetable_id is None:
+            return JsonResponse({'ok': False, 'error': 'timetable_id is required.'}, status=400)
+        if moves_raw is None:
+            return JsonResponse({'ok': False, 'error': 'moves is required.'}, status=400)
+
+        try:
+            timetable_id = int(timetable_id)
+        except (TypeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'timetable_id must be numeric.'}, status=400)
+
+        timetable = get_object_or_404(Timetable, pk=timetable_id)
+
+        try:
+            move_payloads = parse_move_payloads(moves_raw)
+        except MoveParseError as exc:
+            return JsonResponse({'ok': False, 'error': exc.message}, status=exc.status)
+
+        try:
+            schedule_input = load_schedule_input(timetable.semester_id)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+
+        placements = build_hypothetical_placements(timetable, move_payloads)
+        violations = find_hard_violations(placements, schedule_input)
+        penalty = compute_penalty(placements, schedule_input)
+        is_valid = len(violations) == 0
+
+        with transaction.atomic():
+            change_set = DraftChangeSet.objects.filter(
+                timetable=timetable,
+                created_by=request.user,
+                is_published=False,
+                is_discarded=False,
+            ).first()
+            if change_set is None:
+                change_set = DraftChangeSet.objects.create(
+                    timetable=timetable,
+                    created_by=request.user,
+                )
+            else:
+                change_set.moves.all().delete()
+
+            if move_payloads:
+                slot_map = {
+                    slot.pk: slot
+                    for slot in TimetableSlot.objects.filter(
+                        timetable=timetable,
+                        pk__in=[move['slot_id'] for move in move_payloads],
+                    )
+                }
+                DraftMove.objects.bulk_create([
+                    DraftMove(
+                        change_set=change_set,
+                        slot=slot_map[move['slot_id']],
+                        target_timeslot=move['target_timeslot'],
+                        target_room_id=move['target_room_id'],
+                    )
+                    for move in move_payloads
+                ])
+
+            change_set.is_valid = is_valid
+            change_set.last_checked_at = timezone.now()
+            change_set.save(update_fields=['is_valid', 'last_checked_at'])
+
+        return JsonResponse({
+            'ok': True,
+            'is_valid': is_valid,
+            'violations': violations,
+            'penalty_score': penalty,
+            'change_set_id': change_set.pk,
+        })
+
+
+class PublishChangeSetView(RoleRequiredMixin, View):
+    """Admin-only JSON endpoint that commits a validated draft change set."""
+    allowed_roles = ['ADMIN']
+
+    def post(self, request, *args, **kwargs):
+        payload = _json_body(request)
+        if payload is None:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON body.'}, status=400)
+
+        change_set_id = payload.get('change_set_id')
+        if not change_set_id:
+            return JsonResponse({'ok': False, 'error': 'change_set_id is required.'}, status=400)
+
+        change_set = get_object_or_404(
+            DraftChangeSet.objects.select_related('timetable'),
+            pk=change_set_id,
+        )
+
+        if change_set.is_published or change_set.is_discarded:
+            return JsonResponse({'ok': False, 'error': 'Change set is no longer active.'}, status=400)
+        if not change_set.is_valid:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Change set must be validated before publish.',
+            }, status=400)
+
+        timetable = change_set.timetable
+        draft_moves = list(
+            change_set.moves.select_related('slot__class_session', 'target_timeslot', 'target_room')
+        )
+        published_move_count = len(draft_moves)
+
+        try:
+            with transaction.atomic():
+                for draft_move in draft_moves:
+                    slot = draft_move.slot
+                    slot.timeslot = draft_move.target_timeslot
+                    slot.room = draft_move.target_room
+                    slot.teacher_id = slot.class_session.teacher_id
+                    slot.is_locked = True
+                    slot.is_manual = True
+                    slot.save(update_fields=['timeslot', 'room', 'teacher', 'is_locked', 'is_manual'])
+
+                schedule_input = load_schedule_input(timetable.semester_id)
+                updated_slots = list(TimetableSlot.objects.filter(timetable=timetable))
+                penalty = compute_penalty(_slots_to_placements(updated_slots), schedule_input)
+                timetable.penalty_score = penalty
+                timetable.save(update_fields=['penalty_score'])
+
+                change_set.is_published = True
+                change_set.save(update_fields=['is_published'])
+                change_set.moves.all().delete()
+        except IntegrityError:
+            return JsonResponse({
+                'ok': False,
+                'error': 'The database rejected this publish because it conflicts with an existing placement.',
+            }, status=409)
+
+        return JsonResponse({
+            'ok': True,
+            'change_set_id': change_set.pk,
+            'penalty_score': timetable.penalty_score,
+            'published_move_count': published_move_count,
+        })
+
+
+class DiscardChangeSetView(RoleRequiredMixin, View):
+    """Admin-only JSON endpoint that discards a draft change set without applying moves."""
+    allowed_roles = ['ADMIN']
+
+    def post(self, request, *args, **kwargs):
+        payload = _json_body(request)
+        if payload is None:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON body.'}, status=400)
+
+        change_set_id = payload.get('change_set_id')
+        if not change_set_id:
+            return JsonResponse({'ok': False, 'error': 'change_set_id is required.'}, status=400)
+
+        change_set = get_object_or_404(DraftChangeSet, pk=change_set_id)
+
+        if change_set.is_published:
+            return JsonResponse({'ok': False, 'error': 'Published change sets cannot be discarded.'}, status=400)
+        if change_set.is_discarded:
+            return JsonResponse({'ok': True, 'change_set_id': change_set.pk, 'discarded': True})
+
+        change_set.is_discarded = True
+        change_set.is_valid = False
+        change_set.save(update_fields=['is_discarded', 'is_valid'])
+        change_set.moves.all().delete()
+
+        return JsonResponse({
+            'ok': True,
+            'change_set_id': change_set.pk,
+            'discarded': True,
+        })
 
 
 # ── Export Views ──────────────────────────────────────────────────────────

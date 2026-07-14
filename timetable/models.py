@@ -17,6 +17,7 @@ Design notes:
   all engine-generated slots are created with is_locked=False.
 """
 
+from django.conf import settings
 from django.db import models
 from core.models import Room, Semester
 from academics.models import ClassSession, TeacherProfile
@@ -135,3 +136,52 @@ class TimetableSlot(models.Model):
             f"{self.timeslot} | "
             f"{self.room.name}"
         )
+
+
+class DraftChangeSet(models.Model):
+    """Staged batch of timetable moves awaiting validation and publish."""
+
+    timetable = models.ForeignKey(
+        Timetable,
+        on_delete=models.CASCADE,
+        related_name='draft_change_sets',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    is_valid = models.BooleanField(default=False)
+    is_published = models.BooleanField(default=False)
+    is_discarded = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"DraftChangeSet #{self.pk} for {self.timetable}"
+
+
+class DraftMove(models.Model):
+    """One proposed slot move within a draft change set."""
+
+    change_set = models.ForeignKey(
+        DraftChangeSet,
+        on_delete=models.CASCADE,
+        related_name='moves',
+    )
+    slot = models.ForeignKey(
+        TimetableSlot,
+        on_delete=models.CASCADE,
+        related_name='draft_moves',
+    )
+    target_timeslot = models.ForeignKey(TimeSlot, on_delete=models.CASCADE)
+    target_room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('change_set', 'slot')]
+
+    def __str__(self):
+        return f"DraftMove slot={self.slot_id} → {self.target_timeslot_id}/{self.target_room_id}"

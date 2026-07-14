@@ -16,5 +16,8 @@ urlpatterns = [
     path('export/<str:scope>/<str:file_format>/', views.ExportTimetableView.as_view(), name='export'),
     path('slots/move/', views.MoveSlotView.as_view(),          name='move_slot'),
     path('slots/unlock/', views.UnlockSlotView.as_view(),      name='unlock_slot'),
+    path('slots/validate-batch/', views.ValidateBatchView.as_view(), name='validate_batch'),
+    path('change-sets/publish/', views.PublishChangeSetView.as_view(), name='publish_change_set'),
+    path('change-sets/discard/', views.DiscardChangeSetView.as_view(), name='discard_change_set'),
     path('conflicts/', views.ConflictReportView.as_view(),    name='conflict_report'),
 ]

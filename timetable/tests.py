@@ -1,13 +1,23 @@
 import json
+from datetime import timedelta
+
 from django.core.management import call_command
+from django.db.utils import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from academics.models import Section, Subject, TeacherProfile, ClassSession
 from accounts.models import User
 from core.models import Room, Semester, Department
 from core.testing import get_test_school
 from scheduling.models import Constraint, TimeSlot
-from timetable.models import DraftChangeSet, Timetable, TimetableSlot
+from timetable.models import (
+    DraftChangeSet,
+    Timetable,
+    TimetableEditLock,
+    TimetableSlot,
+    acquire_lock,
+)
 from timetable.views import _get_timetable
 
 
@@ -817,3 +827,204 @@ class TimetableIntegrationTests(TestCase):
         res_xlsx = self.client.get(export_xlsx_url)
         self.assertEqual(res_xlsx.status_code, 200)
         self.assertEqual(res_xlsx['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+class TimetableEditLockTests(TestCase):
+    def setUp(self):
+        self.school = get_test_school(code="f26l")
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26L",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+            school=self.school,
+        )
+        self.admin_a = User.objects.create_superuser(
+            username="lock_admin_a",
+            password="password",
+            first_name="Alice",
+            last_name="Admin",
+        )
+        self.admin_b = User.objects.create_superuser(
+            username="lock_admin_b",
+            password="password",
+            first_name="Bob",
+            last_name="Admin",
+        )
+        self.teacher_user = User.objects.create_user(
+            username="lock_teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+            school=self.school,
+        )
+        self.teacher = TeacherProfile.objects.create(
+            user=self.teacher_user,
+            employee_id="LK001",
+        )
+        self.other_teacher_user = User.objects.create_user(
+            username="lock_teacher_b",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+            school=self.school,
+        )
+        self.other_teacher = TeacherProfile.objects.create(
+            user=self.other_teacher_user,
+            employee_id="LK002",
+        )
+        self.department = Department.objects.create(name="CS", code="CS", school=self.school)
+        self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
+        self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE", school=self.school)
+        self.section1 = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.section2 = Section.objects.create(
+            name="10B",
+            year=1,
+            section_label="B",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.subject1 = Subject.objects.create(
+            name="Math",
+            code="MATH101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.subject2 = Subject.objects.create(
+            name="Physics",
+            code="PHY101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.timeslot1 = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        self.timeslot2 = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=2,
+            start_time="10:00",
+            end_time="11:00",
+            is_active=True,
+        )
+        self.session1 = ClassSession.objects.create(
+            section=self.section1,
+            subject=self.subject1,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        self.session2 = ClassSession.objects.create(
+            section=self.section2,
+            subject=self.subject2,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        self.timetable = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+        self.slot1 = TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=self.session1,
+            timeslot=self.timeslot1,
+            room=self.room1,
+            teacher=self.teacher,
+        )
+        self.slot2 = TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=self.session2,
+            timeslot=self.timeslot2,
+            room=self.room2,
+            teacher=self.teacher,
+        )
+
+    def _validate_as(self, username, moves=None):
+        self.client.login(username=username, password="password")
+        return self.client.post(
+            reverse('timetable:validate_batch'),
+            data=json.dumps({'timetable_id': self.timetable.pk, 'moves': moves or []}),
+            content_type='application/json',
+        )
+
+    def test_user_b_blocked_while_user_a_holds_lock(self):
+        response_a = self._validate_as("lock_admin_a")
+        self.assertEqual(response_a.status_code, 200)
+
+        response_b = self._validate_as("lock_admin_b")
+        self.assertEqual(response_b.status_code, 409)
+        data = response_b.json()
+        self.assertFalse(data['ok'])
+        self.assertIn('Alice Admin', data['locked_by'])
+
+    def test_user_b_can_acquire_after_lock_timeout(self):
+        self._validate_as("lock_admin_a")
+        lock = TimetableEditLock.objects.get(timetable=self.timetable)
+        TimetableEditLock.objects.filter(pk=lock.pk).update(
+            locked_at=timezone.now() - timedelta(minutes=TimetableEditLock.LOCK_TIMEOUT_MINUTES + 1),
+        )
+
+        response_b = self._validate_as("lock_admin_b")
+        self.assertEqual(response_b.status_code, 200)
+        lock.refresh_from_db()
+        self.assertEqual(lock.locked_by, self.admin_b)
+
+    def test_publish_releases_lock(self):
+        self.client.login(username="lock_admin_a", password="password")
+        validate_response = self._validate_as("lock_admin_a")
+        change_set_id = validate_response.json()['change_set_id']
+
+        publish_response = self.client.post(
+            reverse('timetable:publish_change_set'),
+            data=json.dumps({'change_set_id': change_set_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(publish_response.status_code, 200)
+        self.assertFalse(TimetableEditLock.objects.filter(timetable=self.timetable).exists())
+
+        response_b = self._validate_as("lock_admin_b")
+        self.assertEqual(response_b.status_code, 200)
+
+    def test_discard_releases_lock(self):
+        self.client.login(username="lock_admin_a", password="password")
+        validate_response = self._validate_as("lock_admin_a")
+        change_set_id = validate_response.json()['change_set_id']
+
+        discard_response = self.client.post(
+            reverse('timetable:discard_change_set'),
+            data=json.dumps({'change_set_id': change_set_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(discard_response.status_code, 200)
+        self.assertFalse(TimetableEditLock.objects.filter(timetable=self.timetable).exists())
+
+    def test_teacher_double_booking_rejected_at_db_level(self):
+        session3 = ClassSession.objects.create(
+            section=self.section2,
+            subject=self.subject2,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        with self.assertRaises(IntegrityError):
+            TimetableSlot.objects.create(
+                timetable=self.timetable,
+                class_session=session3,
+                timeslot=self.timeslot1,
+                room=self.room2,
+                teacher=self.teacher,
+            )
+
+    def test_grid_shows_lock_banner_for_other_admin(self):
+        acquire_lock(self.timetable, self.admin_a)
+        self.client.login(username="lock_admin_b", password="password")
+        response = self.client.get(reverse('timetable:teacher_view'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['edit_lock_held_by_other'])
+        self.assertContains(response, "Alice Admin")

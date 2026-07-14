@@ -18,7 +18,9 @@ Design notes:
 """
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
+from datetime import timedelta
 from core.models import Room, Semester
 from academics.models import ClassSession, TeacherProfile
 from scheduling.models import TimeSlot
@@ -128,6 +130,7 @@ class TimetableSlot(models.Model):
         unique_together = [
             ('timetable', 'timeslot', 'room'),
             ('timetable', 'timeslot', 'class_session'),
+            ('timetable', 'timeslot', 'teacher'),
         ]
         indexes = [
             models.Index(fields=['timetable', 'teacher']),
@@ -193,3 +196,100 @@ class DraftMove(models.Model):
 
     def __str__(self):
         return f"DraftMove slot={self.slot_id} → {self.target_timeslot_id}/{self.target_room_id}"
+
+
+class TimetableEditLock(models.Model):
+    """
+    Prevents concurrent admin edits on the same timetable version.
+
+    Locks expire after LOCK_TIMEOUT_MINUTES of inactivity (locked_at is refreshed
+    on each successful acquire by the holder). When expired, the next admin to
+    mutate steals the lock automatically.
+    """
+
+    LOCK_TIMEOUT_MINUTES = 10
+
+    timetable = models.OneToOneField(
+        Timetable,
+        on_delete=models.CASCADE,
+        related_name='edit_lock',
+    )
+    locked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+    )
+    locked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Timetable Edit Lock'
+        verbose_name_plural = 'Timetable Edit Locks'
+
+    def __str__(self):
+        return f"Lock on {self.timetable} by {self.locked_by}"
+
+
+def _lock_is_expired(lock):
+    expiry = lock.locked_at + timedelta(minutes=TimetableEditLock.LOCK_TIMEOUT_MINUTES)
+    return timezone.now() >= expiry
+
+
+def is_locked_by_other(timetable, user):
+    """
+    Return True when another user holds a non-expired edit lock on timetable.
+
+    Returns (is_blocked, lock_or_none).
+    """
+    try:
+        lock = timetable.edit_lock
+    except TimetableEditLock.DoesNotExist:
+        return False, None
+
+    if lock.locked_by_id == user.pk:
+        return False, lock
+    if _lock_is_expired(lock):
+        return False, lock
+    return True, lock
+
+
+def acquire_lock(timetable, user):
+    """
+    Acquire or refresh the edit lock for timetable.
+
+    Returns (success, lock). On failure, another user holds a non-expired lock.
+    Expired locks are stolen by the requesting user.
+    """
+    with transaction.atomic():
+        lock, created = (
+            TimetableEditLock.objects
+            .select_for_update()
+            .get_or_create(
+                timetable=timetable,
+                defaults={'locked_by': user},
+            )
+        )
+        if created:
+            return True, lock
+
+        if lock.locked_by_id == user.pk:
+            lock.save(update_fields=['locked_at'])
+            return True, lock
+
+        if _lock_is_expired(lock):
+            lock.locked_by = user
+            lock.save(update_fields=['locked_by', 'locked_at'])
+            return True, lock
+
+        return False, lock
+
+
+def release_lock(timetable):
+    """Remove the edit lock after a successful publish or discard."""
+    TimetableEditLock.objects.filter(timetable=timetable).delete()
+
+
+def lock_holder_display_name(lock):
+    """Human-readable name for lock holder responses and UI banners."""
+    if lock is None:
+        return ''
+    user = lock.locked_by
+    return user.get_full_name() or user.get_username()

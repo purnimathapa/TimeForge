@@ -40,7 +40,16 @@ from scheduling.engine.data_types import Placement
 from scheduling.engine.models_io import load_schedule_input, placements_to_slot_dicts
 from scheduling.models import TimeSlot, Constraint
 from .exports import export_timetable_pdf, export_timetable_xlsx
-from .models import DraftChangeSet, DraftMove, Timetable, TimetableSlot
+from .models import (
+    DraftChangeSet,
+    DraftMove,
+    Timetable,
+    TimetableSlot,
+    acquire_lock,
+    is_locked_by_other,
+    lock_holder_display_name,
+    release_lock,
+)
 from .services.editor import MoveParseError, build_hypothetical_placements, parse_move_payloads
 
 
@@ -356,6 +365,24 @@ def _json_body(request):
         return None
 
 
+def _edit_lock_denied_response(lock):
+    holder = lock_holder_display_name(lock)
+    return JsonResponse({
+        'ok': False,
+        'error': f'Timetable is being edited by {holder}. Try again after the lock expires.',
+        'locked_by': holder,
+    }, status=409)
+
+
+def _edit_lock_context(timetable, user):
+    """Grid template context for concurrent-edit awareness."""
+    blocked, lock = is_locked_by_other(timetable, user)
+    return {
+        'edit_lock_held_by_other': blocked,
+        'edit_lock_holder': lock_holder_display_name(lock) if blocked else '',
+    }
+
+
 # ── Base Grid View ─────────────────────────────────────────────────────────
 
 class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
@@ -385,8 +412,13 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
         ctx['all_timetables'] = all_timetables
         ctx['filter_type'] = self.filter_type
         ctx['export_querystring'] = self.request.GET.urlencode()
+        ctx['edit_lock_held_by_other'] = False
+        ctx['edit_lock_holder'] = ''
 
         if timetable:
+            if self.request.user.is_admin():
+                ctx.update(_edit_lock_context(timetable, self.request.user))
+
             timeslots = list(
                 TimeSlot.objects.filter(is_active=True)
                 .order_by('day_of_week', 'period_number')
@@ -930,6 +962,10 @@ class ValidateBatchView(RoleRequiredMixin, View):
 
         timetable = get_object_or_404(_scoped_timetables(request), pk=timetable_id)
 
+        acquired, lock = acquire_lock(timetable, request.user)
+        if not acquired:
+            return _edit_lock_denied_response(lock)
+
         try:
             move_payloads = parse_move_payloads(moves_raw)
         except MoveParseError as exc:
@@ -1021,6 +1057,10 @@ class PublishChangeSetView(RoleRequiredMixin, View):
             }, status=400)
 
         timetable = change_set.timetable
+        acquired, lock = acquire_lock(timetable, request.user)
+        if not acquired:
+            return _edit_lock_denied_response(lock)
+
         draft_moves = list(
             change_set.moves.select_related('slot__class_session', 'target_timeslot', 'target_room')
         )
@@ -1055,6 +1095,8 @@ class PublishChangeSetView(RoleRequiredMixin, View):
                 'error': 'The database rejected this publish because it conflicts with an existing placement.',
             }, status=409)
 
+        release_lock(timetable)
+
         return JsonResponse({
             'ok': True,
             'change_set_id': change_set.pk,
@@ -1083,10 +1125,16 @@ class DiscardChangeSetView(RoleRequiredMixin, View):
         if change_set.is_discarded:
             return JsonResponse({'ok': True, 'change_set_id': change_set.pk, 'discarded': True})
 
+        timetable = change_set.timetable
+        acquired, lock = acquire_lock(timetable, request.user)
+        if not acquired:
+            return _edit_lock_denied_response(lock)
+
         change_set.is_discarded = True
         change_set.is_valid = False
         change_set.save(update_fields=['is_discarded', 'is_valid'])
         change_set.moves.all().delete()
+        release_lock(timetable)
 
         return JsonResponse({
             'ok': True,

@@ -153,6 +153,13 @@
         {% endif %}
     </div>
 
+    {% if user.is_admin and timetable and edit_lock_held_by_other %}
+    <div class="alert alert-warning d-flex align-items-center mt-3 mb-0" role="alert">
+        <i class="bi bi-lock-fill me-2"></i>
+        <span>This timetable is being edited by <strong>{{ edit_lock_holder }}</strong>. Batch changes are read-only until the lock expires.</span>
+    </div>
+    {% endif %}
+
     {% if user.is_admin and timetable and slot_count %}
     <div class="timetable-editor-toolbar d-flex flex-wrap align-items-center gap-2 mt-3">
         <div class="btn-group btn-group-sm" role="group" aria-label="Batch editor actions">

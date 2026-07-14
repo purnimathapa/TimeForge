@@ -41,6 +41,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                     .order_by('-version')
                     .first()
                 )
+                context['published_timetable'] = (
+                    Timetable.objects.filter(
+                        semester=active_semester,
+                        status=Timetable.Status.PUBLISHED,
+                    )
+                    .order_by('-version')
+                    .first()
+                )
             context['latest_timetable'] = latest_timetable
             context['has_timetable'] = latest_timetable is not None
 

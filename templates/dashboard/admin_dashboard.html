@@ -158,6 +158,13 @@
                             {% endif %}
                             &middot;
                             Penalty score: {{ latest_timetable.penalty_score }}
+                            {% if published_timetable and published_timetable.pk != latest_timetable.pk %}
+                            &middot;
+                            Official published: <strong>v{{ published_timetable.version }}</strong>
+                            {% elif published_timetable and latest_timetable.status == 'PUBLISHED' and published_timetable.published_at %}
+                            &middot;
+                            Published {{ published_timetable.published_at|date:"M j, Y" }}
+                            {% endif %}
                         </p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">

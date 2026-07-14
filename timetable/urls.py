@@ -6,6 +6,8 @@ app_name = 'timetable'
 urlpatterns = [
     path('generate/', views.GenerateTimetableView.as_view(), name='generate'),
     path('list/',     views.TimetableListView.as_view(),     name='list'),
+    path('<int:pk>/publish/', views.PublishTimetableView.as_view(), name='publish_timetable'),
+    path('<int:pk>/discard/', views.DiscardDraftTimetableView.as_view(), name='discard_timetable'),
     path('<int:pk>/', views.TimetableDetailView.as_view(),   name='detail'),
 
     # ── Grid views (Prompt 12) ──

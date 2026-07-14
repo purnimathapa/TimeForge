@@ -331,8 +331,9 @@ class GenerateTimetableView(RoleRequiredMixin, View):
         messages.success(
             request,
             (
-                f"Timetable v{timetable.version} generated successfully "
-                f"(penalty score: {timetable.penalty_score})."
+                f"Timetable v{timetable.version} generated as a draft "
+                f"(penalty score: {timetable.penalty_score}). "
+                "Review the draft, then publish when ready."
             ),
         )
         return redirect('timetable:detail', pk=timetable.pk)
@@ -352,6 +353,63 @@ class TimetableDetailView(RoleRequiredMixin, DetailView):
     model = Timetable
     template_name = 'timetable/detail.html'
     context_object_name = 'timetable'
+
+    def get_queryset(self):
+        return Timetable.objects.select_related('semester', 'published_by')
+
+
+class PublishTimetableView(RoleRequiredMixin, View):
+    """Publish a draft timetable as the official schedule for its semester."""
+    allowed_roles = ['ADMIN']
+
+    def post(self, request, pk, *args, **kwargs):
+        timetable = get_object_or_404(Timetable, pk=pk)
+
+        if timetable.status != Timetable.Status.DRAFT:
+            messages.error(request, "Only draft timetables can be published.")
+            return redirect('timetable:detail', pk=pk)
+
+        with transaction.atomic():
+            Timetable.objects.filter(
+                semester=timetable.semester,
+                status=Timetable.Status.PUBLISHED,
+            ).update(status=Timetable.Status.ARCHIVED)
+
+            timetable.status = Timetable.Status.PUBLISHED
+            timetable.published_at = timezone.now()
+            timetable.published_by = request.user
+            timetable.save(update_fields=['status', 'published_at', 'published_by'])
+
+        messages.success(
+            request,
+            f"Timetable v{timetable.version} is now the official published schedule.",
+        )
+        return redirect('timetable:detail', pk=pk)
+
+
+class DiscardDraftTimetableView(RoleRequiredMixin, View):
+    """
+    Discard a draft timetable version by marking it ARCHIVED.
+
+    Slots are retained for audit history rather than deleted.
+    """
+    allowed_roles = ['ADMIN']
+
+    def post(self, request, pk, *args, **kwargs):
+        timetable = get_object_or_404(Timetable, pk=pk)
+
+        if timetable.status != Timetable.Status.DRAFT:
+            messages.error(request, "Only draft timetables can be discarded.")
+            return redirect('timetable:detail', pk=pk)
+
+        timetable.status = Timetable.Status.ARCHIVED
+        timetable.save(update_fields=['status'])
+
+        messages.success(
+            request,
+            f"Draft timetable v{timetable.version} has been archived.",
+        )
+        return redirect('timetable:list')
 
 
 # ── Teacher Timetable View ─────────────────────────────────────────────────

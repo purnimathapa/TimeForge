@@ -106,6 +106,162 @@ class TimetablePermissionTests(TestCase):
         self.assert_admin_only('timetable:unlock_slot', post=True, data={})
         self.assert_admin_only('timetable:validate_batch', post=True, data={})
         self.assert_admin_only('timetable:publish_change_set', post=True, data={})
+        self.assert_admin_only('timetable:publish_timetable', kwargs={'pk': 999}, post=True)
+        self.assert_admin_only('timetable:discard_timetable', kwargs={'pk': 999}, post=True)
+
+
+class TimetablePublishWorkflowTests(TestCase):
+    def setUp(self):
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26P",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.admin = User.objects.create_superuser(username="pub_admin", password="password")
+        self.teacher = User.objects.create_user(
+            username="pub_teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        TeacherProfile.objects.create(user=self.teacher, employee_id="PT1")
+
+        self.department = Department.objects.create(name="CS", code="CS")
+        self.section = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.subject = Subject.objects.create(
+            name="Math",
+            code="MATH101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.timeslot = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        self.teacher_profile = TeacherProfile.objects.get(user=self.teacher)
+        self.class_session = ClassSession.objects.create(
+            section=self.section,
+            subject=self.subject,
+            teacher=self.teacher_profile,
+            periods_per_week=1,
+        )
+
+    def _add_slot(self, timetable):
+        return TimetableSlot.objects.create(
+            timetable=timetable,
+            class_session=self.class_session,
+            timeslot=self.timeslot,
+            room=self.room,
+            teacher=self.teacher_profile,
+        )
+
+    def test_publish_draft_archives_previous_published(self):
+        old_published = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.PUBLISHED,
+            version=1,
+        )
+        draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+            version=2,
+        )
+        self._add_slot(old_published)
+        self._add_slot(draft)
+
+        self.client.login(username="pub_admin", password="password")
+        response = self.client.post(reverse('timetable:publish_timetable', kwargs={'pk': draft.pk}))
+
+        self.assertEqual(response.status_code, 302)
+        old_published.refresh_from_db()
+        draft.refresh_from_db()
+
+        self.assertEqual(old_published.status, Timetable.Status.ARCHIVED)
+        self.assertEqual(draft.status, Timetable.Status.PUBLISHED)
+        self.assertIsNotNone(draft.published_at)
+        self.assertEqual(draft.published_by, self.admin)
+
+    def test_teacher_grid_uses_published_not_draft(self):
+        published = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.PUBLISHED,
+            version=1,
+        )
+        draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+            version=2,
+        )
+        self._add_slot(published)
+
+        self.client.login(username="pub_teacher", password="password")
+        response = self.client.get(reverse('timetable:teacher_view'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "MATH101")
+
+        self.client.login(username="pub_admin", password="password")
+        self.client.post(reverse('timetable:publish_timetable', kwargs={'pk': draft.pk}))
+
+        self.client.login(username="pub_teacher", password="password")
+        response = self.client.get(reverse('timetable:teacher_view'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "MATH101")
+
+        published.refresh_from_db()
+        self.assertEqual(published.status, Timetable.Status.ARCHIVED)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Timetable.Status.PUBLISHED)
+
+    def test_teacher_cannot_see_draft_only_timetable(self):
+        draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+        self._add_slot(draft)
+
+        self.client.login(username="pub_teacher", password="password")
+        response = self.client.get(reverse('timetable:teacher_view'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "MATH101")
+
+    def test_non_admin_cannot_publish(self):
+        draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+
+        self.client.login(username="pub_teacher", password="password")
+        response = self.client.post(reverse('timetable:publish_timetable', kwargs={'pk': draft.pk}))
+        self.assertEqual(response.status_code, 403)
+
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Timetable.Status.DRAFT)
+
+    def test_discard_draft_archives_timetable(self):
+        draft = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.DRAFT,
+        )
+        slot = self._add_slot(draft)
+
+        self.client.login(username="pub_admin", password="password")
+        response = self.client.post(reverse('timetable:discard_timetable', kwargs={'pk': draft.pk}))
+
+        self.assertEqual(response.status_code, 302)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Timetable.Status.ARCHIVED)
+        self.assertTrue(TimetableSlot.objects.filter(pk=slot.pk).exists())
 
 
 class TeacherReadAccessTests(TestCase):

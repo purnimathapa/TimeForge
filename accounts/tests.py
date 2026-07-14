@@ -38,16 +38,19 @@ class ClassRepCreateViewTests(TestCase):
     def setUp(self):
         from core.models import Department, Semester
         from academics.models import Section
+        from core.testing import get_test_school
 
         self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.school = get_test_school(code="acct-f26cr")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26CR",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.section = Section.objects.create(
             name="10A",
             year=1,

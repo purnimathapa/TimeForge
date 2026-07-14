@@ -5,6 +5,7 @@ from django.urls import reverse
 from academics.models import Section, Subject, TeacherProfile, ClassSession
 from accounts.models import User
 from core.models import Room, Semester, Department
+from core.testing import get_test_school
 from scheduling.models import Constraint, TimeSlot
 from timetable.models import DraftChangeSet, Timetable, TimetableSlot
 from timetable.views import _get_timetable
@@ -12,12 +13,14 @@ from timetable.views import _get_timetable
 
 class GetTimetableResolutionTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="f26g")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26G",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.teacher = User.objects.create_user(
@@ -112,12 +115,14 @@ class TimetablePermissionTests(TestCase):
 
 class TimetablePublishWorkflowTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="f26p")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26P",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
         self.admin = User.objects.create_superuser(username="pub_admin", password="password")
         self.teacher = User.objects.create_user(
@@ -127,7 +132,7 @@ class TimetablePublishWorkflowTests(TestCase):
         )
         TeacherProfile.objects.create(user=self.teacher, employee_id="PT1")
 
-        self.department = Department.objects.create(name="CS", code="CS")
+        self.department = Department.objects.create(name="CS", code="CS", school=self.school)
         self.section = Section.objects.create(
             name="10A",
             year=1,
@@ -141,7 +146,7 @@ class TimetablePublishWorkflowTests(TestCase):
             lecture_hours_per_week=1,
             department=self.department,
         )
-        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.timeslot = TimeSlot.objects.create(
             day_of_week=1,
             period_number=1,
@@ -285,15 +290,17 @@ class TeacherReadAccessTests(TestCase):
             employee_id="VT002",
         )
 
+        self.school = get_test_school(code="f26r")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26R",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
-        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.section = Section.objects.create(
             name="10A",
             year=1,
@@ -391,14 +398,16 @@ class ClassRepReadAccessTests(TestCase):
     def setUp(self):
         from academics.models import ClassRepProfile
 
+        self.school = get_test_school(code="f26cr2")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26CR2",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.section = Section.objects.create(
             name="10A",
             year=1,
@@ -431,7 +440,7 @@ class ClassRepReadAccessTests(TestCase):
             user=self.teacher_user,
             employee_id="CR-T1",
         )
-        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.subject = Subject.objects.create(
             name="Math",
             code="MATH101",
@@ -513,16 +522,18 @@ class BatchEditorTests(TestCase):
             user=self.teacher_user,
             employee_id="BT001",
         )
+        self.school = get_test_school(code="f26b")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26B",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
-        self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
-        self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
+        self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
+        self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE", school=self.school)
         self.section1 = Section.objects.create(
             name="10A",
             year=1,
@@ -734,10 +745,18 @@ class TimetableIntegrationTests(TestCase):
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.client.login(username="admin", password="password")
 
+        self.school = get_test_school(code="f26t")
         # 1. Seed minimal required data
-        self.semester = Semester.objects.create(name="Fall 2026 Test", code="F26T", start_date="2026-08-01", end_date="2026-12-15", is_active=True)
-        self.department = Department.objects.create(name="Computer Science", code="CS")
-        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.semester = Semester.objects.create(
+            name="Fall 2026 Test",
+            code="F26T",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+            school=self.school,
+        )
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.subject = Subject.objects.create(name="Math", code="MATH101", lecture_hours_per_week=1, department=self.department)
         self.section = Section.objects.create(name="10A", year=1, section_label="A", semester=self.semester, department=self.department)
         

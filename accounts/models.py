@@ -12,6 +12,13 @@ class User(AbstractUser):
         choices=RoleChoices.choices,
         default=RoleChoices.ADMIN,
     )
+    school = models.ForeignKey(
+        'core.School',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='users',
+    )
 
     def is_admin(self):
         return self.role == self.RoleChoices.ADMIN

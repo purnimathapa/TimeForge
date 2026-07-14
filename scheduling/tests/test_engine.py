@@ -1074,17 +1074,20 @@ class TestModelsIoSyntheticDailyLimit(DjangoTestCase):
         from accounts.models import User
         from academics.models import ClassSession, Section, Subject, TeacherProfile
         from core.models import Department, Room, Semester
+        from core.testing import get_test_school
         from scheduling.engine.models_io import load_schedule_input
         from scheduling.models import TimeSlot
 
+        school = get_test_school(code="engine-synth")
         semester = Semester.objects.create(
             name="Fall 2026 Synth",
             code="F26S",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=school,
         )
-        department = Department.objects.create(name="CS", code="CS")
+        department = Department.objects.create(name="CS", code="CS", school=school)
         section = Section.objects.create(
             name="10A",
             year=1,
@@ -1121,7 +1124,7 @@ class TestModelsIoSyntheticDailyLimit(DjangoTestCase):
             end_time="10:00",
             is_active=True,
         )
-        Room.objects.create(name="101A", capacity=30, room_type="LECTURE", is_active=True)
+        Room.objects.create(name="101A", capacity=30, room_type="LECTURE", is_active=True, school=school)
 
         schedule_input = load_schedule_input(semester.id)
         daily_limits = [

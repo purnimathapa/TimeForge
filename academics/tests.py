@@ -5,6 +5,7 @@ from django.urls import reverse
 from academics.models import Section, Subject, TeacherProfile, ClassRepProfile
 from accounts.models import User
 from core.models import Department, Semester
+from core.testing import get_test_school
 from scheduling.models import TeacherAvailability, TimeSlot
 
 
@@ -42,19 +43,21 @@ class TeacherPortalViewTests(TestCase):
 
 class AcademicsModelTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="acad-f26")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
         self.user = User.objects.create_user(
             username="teacher1",
             password="password",
             role=User.RoleChoices.TEACHER,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
 
     def test_subject_creation(self):
         subject = Subject.objects.create(
@@ -92,19 +95,21 @@ class AcademicsModelTests(TestCase):
 
 class ClassRepProfileTests(TestCase):
     def setUp(self):
+        self.school = get_test_school(code="acad-f26cr")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26CR",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
         self.user = User.objects.create_user(
             username="classrep",
             password="password",
             role=User.RoleChoices.CLASS_REP,
         )
-        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.section = Section.objects.create(
             name="10A",
             year=1,

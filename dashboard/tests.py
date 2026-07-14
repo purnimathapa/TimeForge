@@ -3,18 +3,21 @@ from django.urls import reverse
 
 from accounts.models import User
 from core.models import Department, Semester
+from core.testing import get_test_school
 from timetable.models import Timetable
 
 
 class AdminDashboardTimetableStateTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.school = get_test_school(code="dash-f26")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
 
     def test_admin_dashboard_shows_empty_state_without_timetable(self):
@@ -50,14 +53,16 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
             password="password",
             role=User.RoleChoices.TEACHER,
         )
+        self.school = get_test_school(code="dash-f26t")
         self.semester = Semester.objects.create(
             name="Fall 2026",
             code="F26T",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
+            school=self.school,
         )
-        Department.objects.create(name="Computer Science", code="CS")
+        Department.objects.create(name="Computer Science", code="CS", school=self.school)
 
     def test_teacher_dashboard_ignores_draft_timetable(self):
         Timetable.objects.create(

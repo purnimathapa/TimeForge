@@ -110,13 +110,23 @@
     {% elif user.is_authenticated and user.role == 'CLASS_REP' %}
     <ul class="nav nav-pills flex-column mb-auto">
         <li class="nav-item">
+            <a href="{% url 'timetable:my_routine' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-calendar2-check me-2"></i> My Routine
+            </a>
+        </li>
+        <li class="nav-item">
             <a href="{% url 'timetable:section_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-people me-2"></i> My Section Timetable
+                <i class="bi bi-people me-2"></i> Section Timetable
             </a>
         </li>
         <li class="nav-item">
             <a href="{% url 'timetable:room_view' %}" class="nav-link text-white sidebar-link">
                 <i class="bi bi-door-open me-2"></i> Room Timetable
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'timetable:directory' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-grid-3x3-gap me-2"></i> Browse Timetables
             </a>
         </li>
         <li class="nav-item">
@@ -128,13 +138,23 @@
     {% elif user.is_authenticated and user.role == 'TEACHER' %}
     <ul class="nav nav-pills flex-column mb-auto">
         <li class="nav-item">
+            <a href="{% url 'timetable:my_routine' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-calendar2-check me-2"></i> My Routine
+            </a>
+        </li>
+        <li class="nav-item">
             <a href="{% url 'academics:teacher_portal' %}" class="nav-link text-white sidebar-link">
                 <i class="bi bi-person-badge me-2"></i> My Portal
             </a>
         </li>
         <li class="nav-item">
             <a href="{% url 'timetable:teacher_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-calendar-week me-2"></i> My Timetable
+                <i class="bi bi-calendar-week me-2"></i> Full Timetable Grid
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'timetable:directory' %}" class="nav-link text-white sidebar-link">
+                <i class="bi bi-grid-3x3-gap me-2"></i> Browse Timetables
             </a>
         </li>
     </ul>

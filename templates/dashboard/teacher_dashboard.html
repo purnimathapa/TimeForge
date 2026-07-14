@@ -41,10 +41,15 @@
                 <div class="card-body py-5 text-center bg-white rounded">
                     <i class="bi bi-calendar2-week text-primary fs-1 mb-3 d-block"></i>
                     <h3 class="h4 mb-3">Your Timetable is Ready</h3>
-                    <p class="text-muted mb-4">The administration has published a timetable for the current semester. You can view your assigned classes and schedule.</p>
-                    <a href="{% url 'timetable:teacher_view' %}" class="btn btn-primary btn-lg px-4 rounded-pill">
-                        View My Timetable <i class="bi bi-arrow-right ms-2"></i>
+                    <p class="text-muted mb-4">See your next class and full weekly schedule at a glance.</p>
+                    <a href="{% url 'timetable:my_routine' %}" class="btn btn-primary btn-lg px-4 rounded-pill">
+                        My Routine <i class="bi bi-arrow-right ms-2"></i>
                     </a>
+                    <div class="mt-3">
+                        <a href="{% url 'timetable:teacher_view' %}" class="text-muted small text-decoration-none">
+                            Browse full teacher grid
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

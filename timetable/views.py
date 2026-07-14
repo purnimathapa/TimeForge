@@ -13,6 +13,7 @@ All grid views share a common base that:
 
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -237,6 +238,103 @@ def _annotate_colour(slots):
         code = slot.class_session.subject.code
         slot.colour_class = f'subject-color-{_subject_colour_index(code)}'
     return slots
+
+
+def _local_now():
+    """Current datetime in the institution timezone (Asia/Kathmandu)."""
+    return timezone.localtime(timezone.now())
+
+
+def _model_day_of_week(dt):
+    """Map a datetime to timetable day_of_week (Monday=1 … Sunday=7)."""
+    return dt.weekday() + 1
+
+
+def _slot_bounds_on_date(slot, target_date):
+    """Return timezone-aware start/end datetimes for a slot on target_date."""
+    tz = timezone.get_current_timezone()
+    start = timezone.make_aware(
+        datetime.combine(target_date, slot.timeslot.start_time),
+        tz,
+    )
+    end = timezone.make_aware(
+        datetime.combine(target_date, slot.timeslot.end_time),
+        tz,
+    )
+    return start, end
+
+
+def _upcoming_slot_occurrences(slots, now=None):
+    """
+    Return sorted (slot, start_dt, end_dt) tuples for the next weekly occurrence
+    of each slot that has not yet ended.
+    """
+    if now is None:
+        now = _local_now()
+
+    today = now.date()
+    today_dow = _model_day_of_week(now)
+    occurrences = []
+
+    for slot in slots:
+        day = slot.timeslot.day_of_week
+        days_ahead = (day - today_dow) % 7
+        target_date = today + timedelta(days=days_ahead)
+        start, end = _slot_bounds_on_date(slot, target_date)
+
+        if days_ahead == 0 and end <= now:
+            target_date = today + timedelta(days=7)
+            start, end = _slot_bounds_on_date(slot, target_date)
+
+        if end > now:
+            occurrences.append((slot, start, end))
+
+    occurrences.sort(key=lambda row: row[1])
+    return occurrences
+
+
+def _format_slot_countdown(now, start, end):
+    """Human-readable countdown label for the next class card."""
+    if start <= now < end:
+        return 'Now'
+
+    total_seconds = int((start - now).total_seconds())
+    if total_seconds < 60:
+        return 'in less than a minute'
+
+    minutes = total_seconds // 60
+    if minutes < 60:
+        suffix = 's' if minutes != 1 else ''
+        return f'in {minutes} minute{suffix}'
+
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+    hour_suffix = 's' if hours != 1 else ''
+    if remaining_minutes:
+        return f'in {hours} hour{hour_suffix} {remaining_minutes} min'
+    return f'in {hours} hour{hour_suffix}'
+
+
+def _resolve_next_slot(slots, now=None):
+    """Return (slot, countdown_label) for the next upcoming class, or (None, '')."""
+    occurrences = _upcoming_slot_occurrences(slots, now=now)
+    if not occurrences:
+        return None, ''
+    slot, start, end = occurrences[0]
+    if now is None:
+        now = _local_now()
+    return slot, _format_slot_countdown(now, start, end)
+
+
+def _today_slots(slots, now=None):
+    """Slots scheduled for the current weekday, ordered by period."""
+    if now is None:
+        now = _local_now()
+    today_dow = _model_day_of_week(now)
+    return sorted(
+        [slot for slot in slots if slot.timeslot.day_of_week == today_dow],
+        key=lambda slot: slot.timeslot.period_number,
+    )
 
 
 def _slots_to_placements(slots):
@@ -464,6 +562,92 @@ class DiscardDraftTimetableView(RoleRequiredMixin, View):
             f"Draft timetable v{timetable.version} has been archived.",
         )
         return redirect('timetable:list')
+
+
+# ── My Routine (mobile-first viewer) ─────────────────────────────────────
+
+class MyRoutineView(RoleRequiredMixin, TemplateView):
+    """
+    Mobile-first personal routine for teachers and class reps.
+
+    Uses only PUBLISHED timetables for the active semester.
+    """
+    allowed_roles = ['TEACHER', 'CLASS_REP']
+    template_name = 'timetable/my_routine.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        user = self.request.user
+        now = _local_now()
+
+        semester = _get_active_semester(self.request)
+        timetable, _all_timetables = _get_timetable(self.request, semester)
+
+        ctx['semester'] = semester
+        ctx['timetable'] = timetable
+        ctx['now'] = now
+        ctx['routine_role'] = user.role
+        ctx['next_slot'] = None
+        ctx['next_slot_countdown'] = ''
+        ctx['today_slots'] = []
+        ctx['week_grid'] = {}
+        ctx['days'] = []
+        ctx['periods'] = []
+        ctx['section'] = None
+        ctx['slot_count'] = 0
+
+        if not semester or not timetable:
+            return ctx
+
+        filtered_qs = self._get_routine_slots(timetable)
+        filtered_slots = _annotate_colour(list(filtered_qs))
+        ctx['slot_count'] = len(filtered_slots)
+
+        if not filtered_slots:
+            return ctx
+
+        timeslots = list(
+            TimeSlot.objects.filter(is_active=True)
+            .order_by('day_of_week', 'period_number')
+        )
+        grid, days, periods = _build_grid(filtered_slots, timeslots)
+
+        next_slot, countdown = _resolve_next_slot(filtered_slots, now=now)
+
+        ctx['next_slot'] = next_slot
+        ctx['next_slot_countdown'] = countdown
+        ctx['today_slots'] = _today_slots(filtered_slots, now=now)
+        ctx['week_grid'] = grid
+        ctx['days'] = days
+        ctx['periods'] = periods
+
+        if user.is_class_rep():
+            profile = getattr(user, 'class_rep_profile', None)
+            if profile and profile.is_active:
+                ctx['section'] = profile.section
+
+        return ctx
+
+    def _get_routine_slots(self, timetable):
+        user = self.request.user
+        base_qs = _get_base_slot_queryset(timetable)
+
+        if user.is_teacher():
+            teacher = getattr(user, 'teacher_profile', None)
+            if teacher is None:
+                return TimetableSlot.objects.none()
+            return base_qs.filter(teacher=teacher)
+
+        profile = getattr(user, 'class_rep_profile', None)
+        if profile is None or not profile.is_active:
+            return TimetableSlot.objects.none()
+        return base_qs.filter(class_session__section=profile.section)
+
+
+class TimetableDirectoryView(RoleRequiredMixin, TemplateView):
+    """Lightweight hub linking to institution-wide timetable grids."""
+    allowed_roles = ['TEACHER', 'CLASS_REP']
+    template_name = 'timetable/directory.html'
 
 
 # ── Teacher Timetable View ─────────────────────────────────────────────────

@@ -10,6 +10,9 @@ urlpatterns = [
     path('<int:pk>/discard/', views.DiscardDraftTimetableView.as_view(), name='discard_timetable'),
     path('<int:pk>/', views.TimetableDetailView.as_view(),   name='detail'),
 
+    path('my-routine/', views.MyRoutineView.as_view(), name='my_routine'),
+    path('directory/', views.TimetableDirectoryView.as_view(), name='directory'),
+
     # ── Grid views (Prompt 12) ──
     path('teacher/',   views.TeacherTimetableView.as_view(),  name='teacher_view'),
     path('room/',      views.RoomTimetableView.as_view(),     name='room_view'),

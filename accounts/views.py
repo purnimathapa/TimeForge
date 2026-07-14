@@ -6,7 +6,7 @@ from django.urls import reverse_lazy
 from django.views.generic import CreateView, TemplateView
 
 from accounts.mixins import RoleRequiredMixin
-from .forms import AdminCreationForm
+from .forms import AdminCreationForm, ClassRepCreationForm
 from .models import User
 
 
@@ -30,5 +30,23 @@ class AdminCreateView(LoginRequiredMixin, RoleRequiredMixin, CreateView):
         messages.success(
             self.request,
             f"Admin account '{form.cleaned_data['username']}' created successfully.",
+        )
+        return super().form_valid(form)
+
+
+class ClassRepCreateView(LoginRequiredMixin, RoleRequiredMixin, CreateView):
+    allowed_roles = ['ADMIN']
+    model = User
+    form_class = ClassRepCreationForm
+    template_name = 'accounts/class_rep_form.html'
+    success_url = reverse_lazy('home')
+
+    def form_valid(self, form):
+        messages.success(
+            self.request,
+            (
+                f"Class representative account '{form.cleaned_data['username']}' "
+                f"created for section {form.cleaned_data['section']}."
+            ),
         )
         return super().form_valid(form)

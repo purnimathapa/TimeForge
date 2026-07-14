@@ -2,7 +2,7 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
-from academics.models import Section, Subject, TeacherProfile
+from academics.models import Section, Subject, TeacherProfile, ClassRepProfile
 from accounts.models import User
 from core.models import Department, Semester
 from scheduling.models import TeacherAvailability, TimeSlot
@@ -88,3 +88,33 @@ class AcademicsModelTests(TestCase):
         teacher = TeacherProfile.objects.create(user=self.user, employee_id="T123")
         self.assertEqual(teacher.employee_id, "T123")
         self.assertIn("T123", str(teacher))
+
+
+class ClassRepProfileTests(TestCase):
+    def setUp(self):
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26CR",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username="classrep",
+            password="password",
+            role=User.RoleChoices.CLASS_REP,
+        )
+        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.section = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+
+    def test_class_rep_profile_links_user_to_section(self):
+        profile = ClassRepProfile.objects.create(user=self.user, section=self.section)
+        self.assertEqual(profile.user, self.user)
+        self.assertEqual(profile.section, self.section)
+        self.assertIn("10A", str(profile))

@@ -229,6 +229,120 @@ class TeacherReadAccessTests(TestCase):
         self.assertEqual(list(response.context['all_timetables']), [self.timetable])
 
 
+class ClassRepReadAccessTests(TestCase):
+    def setUp(self):
+        from academics.models import ClassRepProfile
+
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26CR2",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.section = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.other_section = Section.objects.create(
+            name="10B",
+            year=1,
+            section_label="B",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.cr_user = User.objects.create_user(
+            username="classrep",
+            password="password",
+            role=User.RoleChoices.CLASS_REP,
+        )
+        self.class_rep_profile = ClassRepProfile.objects.create(
+            user=self.cr_user,
+            section=self.section,
+        )
+        self.teacher_user = User.objects.create_user(
+            username="teacher1",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        self.teacher = TeacherProfile.objects.create(
+            user=self.teacher_user,
+            employee_id="CR-T1",
+        )
+        self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE")
+        self.subject = Subject.objects.create(
+            name="Math",
+            code="MATH101",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        self.timeslot = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=1,
+            start_time="09:00",
+            end_time="10:00",
+            is_active=True,
+        )
+        self.class_session = ClassSession.objects.create(
+            section=self.section,
+            subject=self.subject,
+            teacher=self.teacher,
+            periods_per_week=1,
+        )
+        self.timetable = Timetable.objects.create(
+            semester=self.semester,
+            status=Timetable.Status.PUBLISHED,
+        )
+        self.slot = TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=self.class_session,
+            timeslot=self.timeslot,
+            room=self.room,
+            teacher=self.teacher,
+        )
+        self.client.login(username="classrep", password="password")
+
+    def test_class_rep_can_browse_read_only_grids(self):
+        for url_name in ('timetable:teacher_view', 'timetable:room_view', 'timetable:section_view'):
+            response = self.client.get(reverse(url_name))
+            self.assertEqual(response.status_code, 200, msg=url_name)
+
+    def test_class_rep_section_view_defaults_to_assigned_section(self):
+        response = self.client.get(reverse('timetable:section_view'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['selected_section'], self.section)
+
+    def test_class_rep_cannot_move_slots(self):
+        response = self.client.post(
+            reverse('timetable:move_slot'),
+            data=json.dumps({'slot_id': self.slot.pk}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_class_rep_can_export_room_and_section(self):
+        room_export = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'room', 'file_format': 'pdf'}),
+            {'room_id': self.room.pk},
+        )
+        self.assertEqual(room_export.status_code, 200)
+
+        section_export = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'section', 'file_format': 'xlsx'}),
+        )
+        self.assertEqual(section_export.status_code, 200)
+
+    def test_class_rep_cannot_export_full_institution(self):
+        response = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'full', 'file_format': 'pdf'}),
+        )
+        self.assertEqual(response.status_code, 403)
+
+
 class TimetableIntegrationTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")

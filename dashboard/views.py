@@ -2,9 +2,9 @@ from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from core.models import Department, Room, Semester
-from academics.models import Subject, Section, TeacherProfile, ClassSession
+from academics.models import Subject, Section, TeacherProfile
 from scheduling.models import Constraint
-from django.db.models import Count
+
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     login_url = reverse_lazy("accounts:login")
@@ -14,7 +14,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             return ['dashboard/admin_dashboard.html']
         elif self.request.user.role == 'TEACHER':
             return ['dashboard/teacher_dashboard.html']
-        return ['dashboard/base_dashboard.html']  # Fallback just in case
+        elif self.request.user.role == 'CLASS_REP':
+            return ['dashboard/class_rep_dashboard.html']
+        return ['dashboard/base_dashboard.html']
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -42,7 +44,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             context['latest_timetable'] = latest_timetable
             context['has_timetable'] = latest_timetable is not None
 
-        elif role == 'TEACHER':
+        elif role in ('TEACHER', 'CLASS_REP'):
             from timetable.models import Timetable
 
             active_semester = Semester.objects.filter(is_active=True).first()
@@ -54,5 +56,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 ).exists()
             else:
                 context['has_timetable'] = False
-            
+
+            if role == 'CLASS_REP':
+                profile = getattr(self.request.user, 'class_rep_profile', None)
+                context['class_rep_profile'] = profile
+                context['section'] = profile.section if profile else None
+
         return context

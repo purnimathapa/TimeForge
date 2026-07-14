@@ -20,5 +20,6 @@ urlpatterns = [
         name='teacher_create',
     ),
     path('admin/create/', views.AdminCreateView.as_view(), name='admin_create'),
+    path('class-rep/create/', views.ClassRepCreateView.as_view(), name='class_rep_create'),
     path('profile/', views.ProfileView.as_view(), name='profile'),
 ]

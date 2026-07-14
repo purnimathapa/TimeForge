@@ -408,7 +408,7 @@ class TeacherTimetableView(BaseTimetableGridView):
 
 class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
     """Room timetable grid with room selector dropdown."""
-    allowed_roles = ['ADMIN', 'TEACHER']
+    allowed_roles = ['ADMIN', 'TEACHER', 'CLASS_REP']
     filter_type = 'room'
 
     def _get_selected_room(self):
@@ -436,7 +436,7 @@ class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
 
 class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
     """Section timetable grid with section selector dropdown."""
-    allowed_roles = ['ADMIN', 'TEACHER']
+    allowed_roles = ['ADMIN', 'TEACHER', 'CLASS_REP']
     filter_type = 'section'
 
     def _get_selected_section(self):
@@ -447,6 +447,10 @@ class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
         section_id = self.request.GET.get('section_id')
         if section_id:
             return qs.filter(pk=section_id).first()
+        if self.request.user.is_class_rep():
+            profile = getattr(self.request.user, 'class_rep_profile', None)
+            if profile and profile.is_active:
+                return qs.filter(pk=profile.section_id).first()
         return qs.order_by('name').first()
 
     def get_filter_queryset(self, timetable):
@@ -719,6 +723,10 @@ class ExportTimetableView(LoginRequiredMixin, View):
         section_id = request.GET.get('section_id')
         if section_id:
             return qs.filter(pk=section_id).first()
+        if request.user.is_class_rep():
+            profile = getattr(request.user, 'class_rep_profile', None)
+            if profile and profile.is_active:
+                return qs.filter(pk=profile.section_id).first()
         return qs.order_by('name').first()
 
 

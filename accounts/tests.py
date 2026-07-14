@@ -24,11 +24,71 @@ class UserModelTests(TestCase):
         """Test the role helper methods."""
         admin = User(username="admin", role=User.RoleChoices.ADMIN)
         teacher = User(username="teacher", role=User.RoleChoices.TEACHER)
+        class_rep = User(username="classrep", role=User.RoleChoices.CLASS_REP)
 
         self.assertTrue(admin.is_admin())
         self.assertTrue(teacher.is_teacher())
+        self.assertTrue(class_rep.is_class_rep())
         self.assertFalse(admin.is_teacher())
         self.assertFalse(teacher.is_admin())
+        self.assertFalse(class_rep.is_admin())
+
+
+class ClassRepCreateViewTests(TestCase):
+    def setUp(self):
+        from core.models import Department, Semester
+        from academics.models import Section
+
+        self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.semester = Semester.objects.create(
+            name="Fall 2026",
+            code="F26CR",
+            start_date="2026-08-01",
+            end_date="2026-12-15",
+            is_active=True,
+        )
+        self.department = Department.objects.create(name="Computer Science", code="CS")
+        self.section = Section.objects.create(
+            name="10A",
+            year=1,
+            section_label="A",
+            semester=self.semester,
+            department=self.department,
+        )
+        self.url = reverse("accounts:class_rep_create")
+        self.valid_payload = {
+            "username": "classrep1",
+            "email": "classrep1@example.com",
+            "first_name": "Class",
+            "last_name": "Rep",
+            "password1": "ComplexPass123!",
+            "password2": "ComplexPass123!",
+            "section": self.section.pk,
+        }
+
+    def test_admin_can_create_class_rep(self):
+        from academics.models import ClassRepProfile
+
+        self.client.login(username="admin", password="password")
+        response = self.client.post(self.url, self.valid_payload)
+
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username="classrep1")
+        self.assertEqual(user.role, User.RoleChoices.CLASS_REP)
+        self.assertTrue(user.is_class_rep())
+        profile = ClassRepProfile.objects.get(user=user)
+        self.assertEqual(profile.section, self.section)
+
+    def test_teacher_cannot_create_class_rep(self):
+        User.objects.create_user(
+            username="teacher",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        self.client.login(username="teacher", password="password")
+        response = self.client.post(self.url, self.valid_payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.filter(username="classrep1").exists())
 
 
 class AdminCreateViewTests(TestCase):

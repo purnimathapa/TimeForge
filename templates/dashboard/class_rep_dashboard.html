@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h3">Class Representative Dashboard</h1>
+            <p class="text-muted">
+                Welcome back, {{ user.get_full_name }}.
+                {% if section %}
+                    You represent <strong>{{ section.name }}</strong>.
+                {% endif %}
+            </p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{% url 'accounts:profile' %}" class="btn btn-outline-primary">
+                <i class="bi bi-person me-2"></i>Profile
+            </a>
+        </div>
+    </div>
+
+    {% if not has_timetable %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm bg-light">
+                <div class="card-body text-center py-5">
+                    <div class="text-muted mb-3">
+                        <i class="bi bi-calendar-x fs-1"></i>
+                    </div>
+                    <h4 class="text-muted">No Timetable Available</h4>
+                    <p class="text-muted mx-auto" style="max-width: 500px;">
+                        The administration has not yet published a timetable for this semester.
+                        Once published, your section schedule will appear here.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body py-5 text-center bg-white rounded">
+                    <i class="bi bi-calendar2-week text-primary fs-1 mb-3 d-block"></i>
+                    <h3 class="h4 mb-3">Section Timetable is Ready</h3>
+                    <p class="text-muted mb-4">
+                        Browse your section schedule, room availability, and institution timetables.
+                    </p>
+                    <div class="d-flex flex-wrap justify-content-center gap-2">
+                        <a href="{% url 'timetable:section_view' %}" class="btn btn-primary btn-lg px-4 rounded-pill">
+                            My Section Timetable <i class="bi bi-arrow-right ms-2"></i>
+                        </a>
+                        <a href="{% url 'timetable:room_view' %}" class="btn btn-outline-primary btn-lg px-4 rounded-pill">
+                            Room Timetable
+                        </a>
+                        <a href="{% url 'timetable:teacher_view' %}" class="btn btn-outline-secondary btn-lg px-4 rounded-pill">
+                            Teacher Timetable
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

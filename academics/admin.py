@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Subject, Section, TeacherProfile, ClassSession
+from .models import Subject, Section, TeacherProfile, ClassRepProfile, ClassSession
 
 @admin.register(ClassSession)
 class ClassSessionAdmin(admin.ModelAdmin):
@@ -30,4 +30,11 @@ class TeacherProfileAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'user__first_name', 'user__last_name', 'employee_id')
     list_filter = ('department', 'is_active')
     inlines = [TeacherAvailabilityInline]
+
+
+@admin.register(ClassRepProfile)
+class ClassRepProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'section', 'is_active')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'section__name')
+    list_filter = ('is_active', 'section__semester')
 

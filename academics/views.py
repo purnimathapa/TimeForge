@@ -23,6 +23,8 @@ from .forms import (
     ClassSessionForm,
 )
 
+# Per-model FK path to the owning School. Academics models do not all carry a
+# direct `school` column, so tenant scoping uses the shortest join to school.
 ACADEMICS_SCHOOL_LOOKUPS = {
     Subject: 'departments__school',
     Course: 'department__school',
@@ -32,6 +34,13 @@ ACADEMICS_SCHOOL_LOOKUPS = {
 }
 
 
+# ── Admin CRUD (Subject, Course, Teacher, ClassRep, ClassSession) ─────────
+#
+# Same List / Create / Update / Delete pattern as core.views, but tenant
+# filtering goes through ACADEMICS_SCHOOL_LOOKUPS instead of a flat `school`
+# field. Detail views (Course, Teacher) are read-only hubs for related data.
+# Non-CRUD write paths: RunningSemesterCreateView, OfferingShiftUpdateView,
+# TeacherPortalView (availability formset).
 class AcademicsAdminCRUDMixin(SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20

@@ -1,3 +1,9 @@
+"""Core app views: home redirect and admin CRUD for Department, Room, Session.
+
+See CoreAdminCRUDMixin below for the shared Create / Read (list) / Update / Delete
+pattern used across all three models.
+"""
+
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
@@ -17,7 +23,17 @@ class HomeView(TemplateView):
             return redirect('dashboard:dashboard')
         return super().get(request, *args, **kwargs)
 
-# Optional Mixin for common CRUD patterns
+# ── Admin CRUD (Department, Room, Session) ────────────────────────────────
+#
+# Each model follows the same Django generic CBV stack:
+#   ListView   → paginated table with optional ?q= search on name/code
+#   CreateView → ModelForm + SchoolFormMixin injects request.school on save
+#   UpdateView → same form, success flash via messages.success
+#   DeleteView → ProtectedDeleteMixin blocks FK-referenced rows and surfaces
+#                blocking relations in the confirm template
+#
+# Tenant isolation: SchoolScopedMixin filters get_queryset() to request.school.
+# Access control: RoleRequiredMixin restricts all four operations to ADMIN.
 class CoreAdminCRUDMixin(SchoolScopedMixin, SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20

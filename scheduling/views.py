@@ -8,6 +8,12 @@ from core.tenant import filter_by_school
 from .models import TimeSlot, Constraint
 from .forms import TimeSlotForm, ConstraintForm
 
+# ── Admin CRUD (TimeSlot, Constraint) ─────────────────────────────────────
+#
+# TimeSlot rows define the institution-wide period grid (day + period + times)
+# and are shared across schools — no tenant filter on list/create/update/delete.
+# Constraint rows are session-scoped; get_queryset() filters via session__school
+# so each admin only sees constraints for their own institution's sessions.
 class SchedulingAdminCRUDMixin(SchoolFormMixin, RoleRequiredMixin):
     allowed_roles = ['ADMIN']
     paginate_by = 20

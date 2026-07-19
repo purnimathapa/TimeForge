@@ -1,4 +1,15 @@
-"""Reusable mixins for tenant-scoped class-based views."""
+"""Reusable mixins for tenant-scoped class-based views.
+
+CRUD stack (used by core, academics, and scheduling admin views):
+  RoleRequiredMixin   — gate dispatch() by user.role (typically ADMIN)
+  SchoolScopedMixin   — filter list/detail querysets to request.school
+  SchoolFormMixin     — pass school into Create/Update ModelForms on save
+  ProtectedDeleteMixin — intercept DeleteView.post(); on ProtectedError,
+                         redirect back with a message listing blocking FK rows
+
+Routine/grid views in timetable do not use these mixins; they scope data via
+filter_by_school() helpers and role checks in timetable.views instead.
+"""
 
 import inspect
 from collections import Counter

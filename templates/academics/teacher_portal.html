@@ -50,7 +50,7 @@
                                         <td class="align-middle">
                                             {{ form.id }}
                                             {{ form.timeslot }}
-                                            {{ form.instance.timeslot.get_day_of_week_display }} - Period {{ form.instance.timeslot.period_number }} 
+                                            {{ form.instance.timeslot.get_day_of_week_display }} · Period {{ form.instance.timeslot.period_number }} 
                                             ({{ form.instance.timeslot.start_time|time:"H:i" }} to {{ form.instance.timeslot.end_time|time:"H:i" }})
                                         </td>
                                         <td class="align-middle">

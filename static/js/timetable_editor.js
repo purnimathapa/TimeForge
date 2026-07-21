@@ -245,6 +245,31 @@
         updateToolbarState();
     }
 
+    const DAY_NAMES = {
+        1: "Monday",
+        2: "Tuesday",
+        3: "Wednesday",
+        4: "Thursday",
+        5: "Friday",
+        6: "Saturday",
+        7: "Sunday"
+    };
+
+    function revertCard(card) {
+        const originalCell = document.getElementById(card.dataset.originalCell);
+        if (originalCell) {
+            originalCell.appendChild(card);
+        }
+    }
+
+    function describeMove(card, cell) {
+        const subjectEl = card.querySelector(".activity-subject");
+        const subject = subjectEl ? subjectEl.textContent.trim() : "this class";
+        const dayName = DAY_NAMES[Number(cell.dataset.day)] || ("Day " + cell.dataset.day);
+        const periodLabel = cell.dataset.periodLabel || ("Period " + cell.dataset.period);
+        return { subject: subject, dayName: dayName, periodLabel: periodLabel };
+    }
+
     function handleSortableEnd(evt) {
         const card = evt.item;
         const cell = evt.to;
@@ -252,13 +277,27 @@
             return;
         }
 
+        // Dropped back where it started, nothing to confirm.
+        if (evt.to === evt.from) {
+            return;
+        }
+
         const roomId = resolveRoomId(cell, card);
         if (!roomId) {
             showToast("Choose a room-specific grid before moving this slot.", "warning");
-            const originalCell = document.getElementById(card.dataset.originalCell);
-            if (originalCell) {
-                originalCell.appendChild(card);
-            }
+            revertCard(card);
+            return;
+        }
+
+        const info = describeMove(card, cell);
+        const confirmed = window.confirm(
+            "Move " + info.subject + " to " + info.dayName + ", " + info.periodLabel + "?\n\n"
+            + "The move will be staged so you can review conflicts, then Publish to apply it."
+        );
+
+        if (!confirmed) {
+            revertCard(card);
+            showToast("Move cancelled. The class was left in its original slot.", "secondary");
             return;
         }
 

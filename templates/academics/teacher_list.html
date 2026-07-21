@@ -1,33 +1,65 @@
-{% extends 'partials/base_list.html' %}
+{% extends 'base.html' %}
 
-{% block page_title %}Teachers{% endblock %}
+{% block title %}Teachers · TimeForge{% endblock %}
 
-{% block create_url %}{% url 'academics:teacher_create' %}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-1">
+        <p class="eyebrow mb-1">Academics</p>
+        <h1 class="page-title h3 mb-0">Teachers</h1>
+    </div>
 
-{% block table_headers %}
-    <th>Name</th>
-    <th>Employee ID</th>
-    <th>Title</th>
-    <th>Department</th>
-    <th>Status</th>
+    <div class="list-toolbar mt-3">
+        <form method="get" class="search-inline">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" class="form-control" placeholder="Search teachers…" value="{{ request.GET.q }}">
+        </form>
+        <a href="{% url 'academics:teacher_create' %}" class="btn btn-primary">
+            <i data-lucide="user-plus" class="icon-sm"></i> Add Teacher
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        {% for object in object_list %}
+        <div class="col">
+            <div class="card tf-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <span class="tf-avatar">{% if object.user.first_name or object.user.last_name %}{{ object.user.first_name|first|upper }}{{ object.user.last_name|first|upper }}{% else %}{{ object.user.username|slice:":2"|upper }}{% endif %}</span>
+                        <div class="min-w-0">
+                            <div class="fw-semibold text-truncate">{{ object.ranked_name }}</div>
+                            <div class="text-muted small">{{ object.employee_id }}</div>
+                        </div>
+                        <span class="badge {% if object.is_active %}bg-success{% else %}bg-secondary{% endif %} ms-auto">
+                            {% if object.is_active %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        {% if object.is_visiting %}<span class="entity-meta"><i data-lucide="plane"></i> Visiting faculty</span>{% endif %}
+                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department.name|default:"No department" }}</span>
+                        <span class="entity-meta"><i data-lucide="clock"></i> Up to {{ object.max_hours_per_week }} hrs/week · {{ object.max_hours_per_day }} hrs/day</span>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end entity-card-actions">
+                    <a href="{% url 'academics:teacher_update' object.pk %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="pencil" class="icon-sm"></i> Edit</a>
+                    <a href="{% url 'academics:teacher_delete' object.pk %}" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon-sm"></i></a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <span class="empty-state-icon mb-3"><i data-lucide="graduation-cap"></i></span>
+                    <h5 class="mt-2 mb-1">No teachers yet</h5>
+                    <p class="text-muted mb-3">Add teaching staff to start assigning classes.</p>
+                    <a href="{% url 'academics:teacher_create' %}" class="btn btn-primary"><i data-lucide="user-plus" class="icon-sm"></i> Add Teacher</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% include 'partials/pagination.html' %}
+</div>
 {% endblock %}
-
-{% block table_row %}
-    <td>{{ object.user.get_full_name }}</td>
-    <td>{{ object.employee_id }}</td>
-    <td>{{ object.title }}</td>
-    <td>{{ object.department.name|default:"-" }}</td>
-    <td>
-        {% if object.is_active %}
-            <span class="badge bg-success">Active</span>
-        {% else %}
-            <span class="badge bg-secondary">Inactive</span>
-        {% endif %}
-    </td>
-    <td class="text-end">
-        <a href="{% url 'academics:teacher_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-        <a href="{% url 'academics:teacher_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-    </td>
-{% endblock %}
-
-{% block empty_message %}No teachers found.{% endblock %}

@@ -3,7 +3,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
-from core.mixins import SchoolFormMixin, SchoolScopedMixin
+from core.mixins import SchoolFormMixin, SchoolScopedMixin, ProtectedDeleteMixin
 from .models import Department, Room, Semester
 from .forms import DepartmentForm, RoomForm, SemesterForm
 from django.shortcuts import redirect
@@ -51,13 +51,10 @@ class DepartmentUpdateView(CoreAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Department updated successfully.")
         return super().form_valid(form)
 
-class DepartmentDeleteView(CoreAdminCRUDMixin, DeleteView):
+class DepartmentDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
     model = Department
     success_url = reverse_lazy('core:department_list')
-    
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Department deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Department deleted successfully."
 
 # -- Room --
 class RoomListView(CoreAdminCRUDMixin, ListView):
@@ -88,13 +85,10 @@ class RoomUpdateView(CoreAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Room updated successfully.")
         return super().form_valid(form)
 
-class RoomDeleteView(CoreAdminCRUDMixin, DeleteView):
+class RoomDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
     model = Room
     success_url = reverse_lazy('core:room_list')
-
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Room deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Room deleted successfully."
 
 # -- Semester --
 class SemesterListView(CoreAdminCRUDMixin, ListView):
@@ -137,10 +131,7 @@ class SemesterUpdateView(CoreAdminCRUDMixin, UpdateView):
                 messages.error(self.request, f"{field}: {error}")
         return super().form_invalid(form)
 
-class SemesterDeleteView(CoreAdminCRUDMixin, DeleteView):
+class SemesterDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
     model = Semester
     success_url = reverse_lazy('core:semester_list')
-    
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Semester deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Semester deleted successfully."

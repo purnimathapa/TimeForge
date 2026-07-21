@@ -4,7 +4,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
-from core.mixins import SchoolFormMixin
+from core.mixins import SchoolFormMixin, ProtectedDeleteMixin
 from core.tenant import filter_by_school
 from .models import Subject, Section, TeacherProfile, ClassSession
 from scheduling.models import TeacherAvailability
@@ -55,12 +55,10 @@ class SubjectUpdateView(AcademicsAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Subject updated successfully.")
         return super().form_valid(form)
 
-class SubjectDeleteView(AcademicsAdminCRUDMixin, DeleteView):
+class SubjectDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView):
     model = Subject
     success_url = reverse_lazy('academics:subject_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Subject deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Subject deleted successfully."
 
 # -- Section --
 class SectionListView(AcademicsAdminCRUDMixin, ListView):
@@ -88,12 +86,10 @@ class SectionUpdateView(AcademicsAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Section updated successfully.")
         return super().form_valid(form)
 
-class SectionDeleteView(AcademicsAdminCRUDMixin, DeleteView):
+class SectionDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView):
     model = Section
     success_url = reverse_lazy('academics:section_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Section deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Section deleted successfully."
 
 # -- TeacherProfile --
 class TeacherListView(AcademicsAdminCRUDMixin, ListView):
@@ -131,16 +127,22 @@ class TeacherUpdateView(AcademicsAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Teacher updated successfully.")
         return super().form_valid(form)
 
-class TeacherDeleteView(AcademicsAdminCRUDMixin, DeleteView):
+class TeacherDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView):
     model = TeacherProfile
+    template_name = 'academics/teacher_confirm_delete.html'
     success_url = reverse_lazy('academics:teacher_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Teacher deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Teacher deleted successfully."
+
+    def perform_delete(self, obj):
+        # Deleting the login account cascades to TeacherProfile (OneToOne CASCADE)
+        # and TeacherAvailability. Class sessions / timetable slots SET_NULL the
+        # teacher FK, so history is preserved without blocking the delete.
+        obj.user.delete()
 
 # -- ClassSession --
 class ClassSessionListView(AcademicsAdminCRUDMixin, ListView):
     model = ClassSession
+    template_name = 'academics/class_session_list.html'
     def get_queryset(self):
         qs = super().get_queryset()
         q = self.request.GET.get('q')
@@ -151,6 +153,7 @@ class ClassSessionListView(AcademicsAdminCRUDMixin, ListView):
 class ClassSessionCreateView(AcademicsAdminCRUDMixin, CreateView):
     model = ClassSession
     form_class = ClassSessionForm
+    template_name = 'academics/class_session_form.html'
     success_url = reverse_lazy('academics:class_session_list')
     def form_valid(self, form):
         messages.success(self.request, "Class Session created successfully.")
@@ -159,17 +162,17 @@ class ClassSessionCreateView(AcademicsAdminCRUDMixin, CreateView):
 class ClassSessionUpdateView(AcademicsAdminCRUDMixin, UpdateView):
     model = ClassSession
     form_class = ClassSessionForm
+    template_name = 'academics/class_session_form.html'
     success_url = reverse_lazy('academics:class_session_list')
     def form_valid(self, form):
         messages.success(self.request, "Class Session updated successfully.")
         return super().form_valid(form)
 
-class ClassSessionDeleteView(AcademicsAdminCRUDMixin, DeleteView):
+class ClassSessionDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView):
     model = ClassSession
+    template_name = 'academics/class_session_confirm_delete.html'
     success_url = reverse_lazy('academics:class_session_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Class Session deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Class Session deleted successfully."
 
 # -- Teacher Portal --
 from django.forms import inlineformset_factory

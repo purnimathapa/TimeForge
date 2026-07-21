@@ -26,7 +26,7 @@ class AdminDashboardTimetableStateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["has_timetable"])
-        self.assertContains(response, "No Timetable Generated Yet")
+        self.assertContains(response, "Generate a timetable to populate the daily schedule.")
 
     def test_admin_dashboard_shows_timetable_summary_when_present(self):
         timetable = Timetable.objects.create(
@@ -43,7 +43,7 @@ class AdminDashboardTimetableStateTests(TestCase):
         self.assertEqual(response.context["latest_timetable"], timetable)
         self.assertContains(response, f"v{timetable.version}")
         self.assertContains(response, "Draft")
-        self.assertNotContains(response, "No Timetable Generated Yet")
+        self.assertNotContains(response, "Generate a timetable to populate the daily schedule.")
 
 
 class TeacherDashboardPublishedOnlyTests(TestCase):
@@ -76,7 +76,7 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["has_timetable"])
-        self.assertContains(response, "No Timetable Available")
+        self.assertContains(response, "No timetable available")
 
     def test_teacher_dashboard_detects_published_timetable(self):
         Timetable.objects.create(
@@ -89,4 +89,4 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["has_timetable"])
-        self.assertContains(response, "Your Timetable is Ready")
+        self.assertContains(response, "Next Class")

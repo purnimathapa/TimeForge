@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static timetable_tags %}
 
-{% block title %}My Routine — TimeForge{% endblock %}
+{% block title %}My Routine · TimeForge{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/timetable_grid.css' %}">
@@ -91,7 +91,7 @@
             <h2 class="h3 fw-bold mb-2">{{ next_slot.class_session.subject.code }}</h2>
             <p class="text-muted mb-1">{{ next_slot.class_session.subject.name }}</p>
             <div class="d-flex flex-wrap gap-3 mt-3 small">
-                <span><i class="bi bi-clock me-1 text-primary"></i>{{ next_slot.timeslot.start_time|time:"g:i A" }} – {{ next_slot.timeslot.end_time|time:"g:i A" }}</span>
+                <span><i class="bi bi-clock me-1 text-primary"></i>{{ next_slot.timeslot.start_time|time:"g:i A" }} to {{ next_slot.timeslot.end_time|time:"g:i A" }}</span>
                 <span><i class="bi bi-door-open me-1 text-primary"></i>{{ next_slot.room.name }}</span>
                 {% if routine_role == 'CLASS_REP' and next_slot.teacher %}
                     <span><i class="bi bi-person me-1 text-primary"></i>{{ next_slot.teacher.user.get_full_name }}</span>
@@ -131,7 +131,7 @@
     </div>
     {% endif %}
 
-    {# ── Full week — stacked on mobile, grid on tablet+ ── #}
+    {# Full week: stacked on mobile, grid on tablet and up #}
     <div class="mb-3">
         <h2 class="h6 text-uppercase text-muted fw-semibold mb-2">This week</h2>
 
@@ -201,7 +201,7 @@
                                     </div>
                                     {% endfor %}
                                 {% else %}
-                                    <span class="text-muted">—</span>
+                                    <span class="text-muted">Free</span>
                                 {% endif %}
                                 {% endwith %}
                             </td>

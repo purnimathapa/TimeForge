@@ -398,6 +398,72 @@ class TeacherReadAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_teacher_export_ignores_other_teacher_id(self):
+        """A teacher cannot pull another teacher's schedule via ?teacher_id=."""
+        import zipfile
+        from io import BytesIO
+
+        from django.test import RequestFactory
+
+        from timetable.views import ExportTimetableView
+
+        other = self.other_teacher_user.teacher_profile
+        other_subject = Subject.objects.create(
+            name="Physics",
+            code="PHYS999",
+            lecture_hours_per_week=1,
+            department=self.department,
+        )
+        other_session = ClassSession.objects.create(
+            section=self.section,
+            subject=other_subject,
+            teacher=other,
+            periods_per_week=1,
+        )
+        other_timeslot = TimeSlot.objects.create(
+            day_of_week=1,
+            period_number=2,
+            start_time="10:00",
+            end_time="11:00",
+            is_active=True,
+        )
+        other_room = Room.objects.create(
+            name="202B", capacity=30, room_type="LECTURE", school=self.school,
+        )
+        TimetableSlot.objects.create(
+            timetable=self.timetable,
+            class_session=other_session,
+            timeslot=other_timeslot,
+            room=other_room,
+            teacher=other,
+        )
+
+        factory = RequestFactory()
+        request = factory.get(
+            reverse('timetable:export', kwargs={'scope': 'teacher', 'file_format': 'xlsx'}),
+            {'teacher_id': other.pk},
+        )
+        request.user = self.teacher_user
+        view = ExportTimetableView()
+        selected = view._selected_teacher(request)
+        self.assertEqual(selected.pk, self.teacher.pk)
+        slots, _title, label = view._resolve_slots(request, self.timetable, 'teacher')
+        self.assertTrue(slots)
+        self.assertTrue(all(slot.teacher_id == self.teacher.pk for slot in slots))
+        self.assertFalse(any(slot.teacher_id == other.pk for slot in slots))
+        self.assertIn(str(self.teacher), label)
+        self.assertNotIn(str(other), label)
+
+        response = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'teacher', 'file_format': 'xlsx'}),
+            {'teacher_id': other.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(BytesIO(response.content)) as archive:
+            sheet_xml = archive.read('xl/worksheets/sheet1.xml')
+        self.assertIn(b'MATH101', sheet_xml)
+        self.assertNotIn(b'PHYS999', sheet_xml)
+
     def test_teacher_version_selector_lists_published_only(self):
         Timetable.objects.create(
             semester=self.semester,

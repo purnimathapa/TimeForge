@@ -1,25 +1,62 @@
-{% extends 'partials/base_list.html' %}
+{% extends 'base.html' %}
 
-{% block page_title %}Class Sessions{% endblock %}
+{% block title %}Class Sessions · TimeForge{% endblock %}
 
-{% block create_url %}{% url 'academics:class_session_create' %}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-1">
+        <p class="eyebrow mb-1">Academics</p>
+        <h1 class="page-title h3 mb-0">Class Sessions</h1>
+        <p class="text-muted mb-0">Each session maps a subject to a section and teacher for scheduling.</p>
+    </div>
 
-{% block table_headers %}
-    <th>Subject</th>
-    <th>Section</th>
-    <th>Teacher</th>
-    <th>Periods/Week</th>
+    <div class="list-toolbar mt-3">
+        <form method="get" class="search-inline">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" class="form-control" placeholder="Search sessions" value="{{ request.GET.q }}">
+        </form>
+        <a href="{% url 'academics:class_session_create' %}" class="btn btn-primary">
+            <i data-lucide="plus" class="icon-sm"></i> Add Class Session
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        {% for object in object_list %}
+        <div class="col">
+            <div class="card tf-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="card-code-chip">{{ object.subject.code }}</span>
+                        <span class="badge bg-primary ms-auto">{{ object.periods_per_week }}/week</span>
+                    </div>
+                    <div class="fw-semibold mb-2">{{ object.subject.name }}</div>
+                    <div class="d-flex flex-column gap-2">
+                        <span class="entity-meta"><i data-lucide="users"></i> {{ object.section.name }}</span>
+                        <span class="entity-meta"><i data-lucide="graduation-cap"></i>
+                            {% if object.teacher %}{{ object.teacher.display_name }}{% else %}Unassigned{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end entity-card-actions">
+                    <a href="{% url 'academics:class_session_update' object.pk %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="pencil" class="icon-sm"></i> Edit</a>
+                    <a href="{% url 'academics:class_session_delete' object.pk %}" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon-sm"></i></a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <span class="empty-state-icon mb-3"><i data-lucide="notebook-pen"></i></span>
+                    <h5 class="mt-2 mb-1">No class sessions yet</h5>
+                    <p class="text-muted mb-3">Create sessions so the engine has something to place.</p>
+                    <a href="{% url 'academics:class_session_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon-sm"></i> Add Class Session</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% include 'partials/pagination.html' %}
+</div>
 {% endblock %}
-
-{% block table_row %}
-    <td>{{ object.subject.code }} - {{ object.subject.name }}</td>
-    <td>{{ object.section.name }}</td>
-    <td>{{ object.teacher.user.get_full_name|default:"Unassigned" }}</td>
-    <td>{{ object.periods_per_week }}</td>
-    <td class="text-end">
-        <a href="{% url 'academics:class_session_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-        <a href="{% url 'academics:class_session_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-    </td>
-{% endblock %}
-
-{% block empty_message %}No class sessions found.{% endblock %}

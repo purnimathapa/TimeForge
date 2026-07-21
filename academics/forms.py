@@ -43,19 +43,40 @@ class SectionForm(SchoolScopedFormMixin, forms.ModelForm):
 
 
 class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
-    """Edit an existing teacher profile (account fields are managed separately)."""
+    """Edit an existing teacher profile, including the account's name."""
+
+    first_name = forms.CharField(max_length=150, required=False, label="First name")
+    last_name = forms.CharField(max_length=150, required=False, label="Last name")
+
+    field_order = [
+        'first_name', 'last_name', 'employee_id', 'title', 'is_visiting',
+        'department', 'max_hours_per_day', 'max_hours_per_week', 'is_active',
+    ]
 
     class Meta:
         model = TeacherProfile
-        fields = ['employee_id', 'title', 'department', 'max_hours_per_day', 'max_hours_per_week', 'is_active']
+        fields = ['employee_id', 'title', 'is_visiting', 'department', 'max_hours_per_day', 'max_hours_per_week', 'is_active']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.user_id:
+            self.fields['first_name'].initial = self.instance.user.first_name
+            self.fields['last_name'].initial = self.instance.user.last_name
         if self.school is not None:
             self.fields['department'].queryset = Department.objects.filter(
                 is_active=True,
                 school=self.school,
             )
+
+    def save(self, commit=True):
+        profile = super().save(commit=False)
+        user = profile.user
+        user.first_name = self.cleaned_data.get('first_name', '')
+        user.last_name = self.cleaned_data.get('last_name', '')
+        if commit:
+            user.save()
+            profile.save()
+        return profile
 
 
 class TeacherCreationForm(UserCreationForm):
@@ -63,12 +84,23 @@ class TeacherCreationForm(UserCreationForm):
     Create a login account and TeacherProfile together in one submit.
     """
 
+    first_name = forms.CharField(max_length=150, required=True, label="First name")
+    last_name = forms.CharField(max_length=150, required=False, label="Last name")
     email = forms.EmailField(required=True)
     employee_id = forms.CharField(
         max_length=50,
         help_text="Unique staff identifier (e.g. EMP-101).",
     )
-    title = forms.CharField(max_length=50, required=False)
+    title = forms.ChoiceField(
+        choices=[('', 'Select a title')] + list(TeacherProfile.Title.choices),
+        required=False,
+        label="Title / rank",
+    )
+    is_visiting = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Visiting faculty",
+    )
     department = forms.ModelChoiceField(
         queryset=Department.objects.none(),
         required=False,
@@ -76,6 +108,12 @@ class TeacherCreationForm(UserCreationForm):
     max_hours_per_day = forms.IntegerField(min_value=1, initial=4)
     max_hours_per_week = forms.IntegerField(min_value=1, initial=20)
     is_active = forms.BooleanField(required=False, initial=True)
+
+    field_order = [
+        'first_name', 'last_name', 'username', 'email', 'password1', 'password2',
+        'employee_id', 'title', 'is_visiting', 'department',
+        'max_hours_per_day', 'max_hours_per_week', 'is_active',
+    ]
 
     class Meta(UserCreationForm.Meta):
         model = User
@@ -111,6 +149,7 @@ class TeacherCreationForm(UserCreationForm):
                 user=user,
                 employee_id=self.cleaned_data['employee_id'],
                 title=self.cleaned_data.get('title', ''),
+                is_visiting=self.cleaned_data.get('is_visiting', False),
                 department=self.cleaned_data.get('department'),
                 max_hours_per_day=self.cleaned_data['max_hours_per_day'],
                 max_hours_per_week=self.cleaned_data['max_hours_per_week'],

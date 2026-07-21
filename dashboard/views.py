@@ -64,6 +64,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             context['latest_timetable'] = latest_timetable
             context['has_timetable'] = latest_timetable is not None
 
+            chart_timetable = context.get('published_timetable') or latest_timetable
+            context.update(self._chart_context(chart_timetable))
+            context.update(self._operations_context(latest_timetable, chart_timetable))
+
         elif role in ('TEACHER', 'CLASS_REP'):
             from timetable.models import Timetable
 
@@ -71,17 +75,180 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 Semester.objects.filter(is_active=True), request
             ).first()
             context['active_semester'] = active_semester
+
+            published = None
             if active_semester:
-                context['has_timetable'] = Timetable.objects.filter(
-                    semester=active_semester,
-                    status=Timetable.Status.PUBLISHED,
-                ).exists()
-            else:
-                context['has_timetable'] = False
+                published = (
+                    Timetable.objects.filter(
+                        semester=active_semester,
+                        status=Timetable.Status.PUBLISHED,
+                    )
+                    .order_by('-version')
+                    .first()
+                )
+            context['has_timetable'] = published is not None
 
             if role == 'CLASS_REP':
                 profile = getattr(self.request.user, 'class_rep_profile', None)
                 context['class_rep_profile'] = profile
                 context['section'] = profile.section if profile else None
 
+            context.update(self._role_schedule_context(role, published))
+
         return context
+
+    def _role_schedule_context(self, role, published):
+        """Today's schedule and next class for teacher / class-rep dashboards."""
+        from django.utils import timezone
+
+        ctx = {
+            'today_schedule': [],
+            'today_weekday': timezone.localtime().strftime('%A'),
+            'next_slot': None,
+            'week_slot_count': 0,
+        }
+        if published is None:
+            return ctx
+
+        from timetable.models import TimetableSlot
+
+        user = self.request.user
+        base = (
+            TimetableSlot.objects.filter(timetable=published)
+            .select_related(
+                'class_session__subject',
+                'class_session__section',
+                'timeslot',
+                'room',
+                'teacher__user',
+            )
+        )
+
+        if role == 'TEACHER':
+            profile = getattr(user, 'teacher_profile', None)
+            base = base.filter(teacher=profile) if profile else base.none()
+        else:  # CLASS_REP
+            profile = getattr(user, 'class_rep_profile', None)
+            if profile and profile.section_id:
+                base = base.filter(class_session__section_id=profile.section_id)
+            else:
+                base = base.none()
+
+        ctx['week_slot_count'] = base.count()
+
+        today_dow = timezone.localtime().isoweekday()
+        today_slots = list(
+            base.filter(timeslot__day_of_week=today_dow)
+            .order_by('timeslot__period_number')
+        )
+        ctx['today_schedule'] = today_slots
+
+        now_time = timezone.localtime().time()
+        upcoming = [s for s in today_slots if s.timeslot.end_time >= now_time]
+        ctx['next_slot'] = upcoming[0] if upcoming else None
+        return ctx
+
+    def _chart_context(self, timetable):
+        """Aggregate teacher-workload and room-utilization data for dashboard charts."""
+        empty = {
+            'teacher_workload': [],
+            'room_utilization': [],
+            'chart_total_sessions': 0,
+        }
+        if timetable is None:
+            return empty
+
+        from collections import defaultdict
+        from scheduling.models import TimeSlot
+        from timetable.models import TimetableSlot
+
+        slots = list(
+            TimetableSlot.objects.filter(timetable=timetable)
+            .select_related('teacher__user', 'room')
+        )
+        if not slots:
+            return empty
+
+        active_slot_count = TimeSlot.objects.filter(is_active=True).count() or 1
+
+        teacher_counts = defaultdict(int)
+        room_counts = defaultdict(int)
+        room_labels = {}
+        for slot in slots:
+            if slot.teacher and slot.teacher.user:
+                name = slot.teacher.user.get_full_name() or slot.teacher.user.get_username()
+            elif slot.teacher:
+                name = f'Teacher #{slot.teacher_id}'
+            else:
+                name = 'Unassigned'
+            teacher_counts[name] += 1
+            if slot.room:
+                room_counts[slot.room_id] += 1
+                building = getattr(slot.room, 'building', '') or ''
+                room_labels[slot.room_id] = (
+                    f'{slot.room.name} ({building})' if building else slot.room.name
+                )
+
+        teacher_workload = sorted(
+            ({'label': n, 'value': c} for n, c in teacher_counts.items()),
+            key=lambda row: row['value'],
+            reverse=True,
+        )[:10]
+
+        room_utilization = sorted(
+            (
+                {
+                    'label': room_labels.get(rid, f'Room #{rid}'),
+                    'value': round(c / active_slot_count * 100, 1),
+                    'used': c,
+                }
+                for rid, c in room_counts.items()
+            ),
+            key=lambda row: row['value'],
+            reverse=True,
+        )[:10]
+
+        return {
+            'teacher_workload': teacher_workload,
+            'room_utilization': room_utilization,
+            'chart_total_sessions': len(slots),
+        }
+
+    def _operations_context(self, latest_timetable, chart_timetable):
+        """Operations-center context: today's schedule + draft/conflict signals."""
+        from django.utils import timezone
+        from timetable.models import Timetable, TimetableSlot
+
+        ctx = {
+            'today_schedule': [],
+            'today_weekday': timezone.localtime().strftime('%A'),
+            'draft_pending': False,
+            'draft_pending_version': None,
+            'conflict_penalty': 0,
+        }
+
+        if latest_timetable is not None:
+            ctx['conflict_penalty'] = latest_timetable.penalty_score
+            if latest_timetable.status == Timetable.Status.DRAFT:
+                ctx['draft_pending'] = True
+                ctx['draft_pending_version'] = latest_timetable.version
+
+        if chart_timetable is not None:
+            today_dow = timezone.localtime().isoweekday()  # Mon=1 … Sun=7
+            today_slots = (
+                TimetableSlot.objects.filter(
+                    timetable=chart_timetable,
+                    timeslot__day_of_week=today_dow,
+                )
+                .select_related(
+                    'class_session__subject',
+                    'class_session__section',
+                    'timeslot',
+                    'room',
+                    'teacher__user',
+                )
+                .order_by('timeslot__period_number')[:12]
+            )
+            ctx['today_schedule'] = list(today_slots)
+
+        return ctx

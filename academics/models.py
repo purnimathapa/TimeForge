@@ -35,16 +35,41 @@ class Section(models.Model):
         return f"{self.name} ({self.semester.name})"
 
 class TeacherProfile(models.Model):
+    class Title(models.TextChoices):
+        # Ordered from most senior to most junior academic rank.
+        PROF_DR = 'Prof. Dr.', 'Prof. Dr.'
+        PROFESSOR = 'Professor', 'Professor'
+        ASSOCIATE_PROFESSOR = 'Associate Professor', 'Associate Professor'
+        ASSISTANT_PROFESSOR = 'Assistant Professor', 'Assistant Professor'
+        DR = 'Dr.', 'Dr.'
+        LECTURER = 'Lecturer', 'Lecturer'
+        ASSISTANT_LECTURER = 'Assistant Lecturer', 'Assistant Lecturer'
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='teacher_profile')
     employee_id = models.CharField(max_length=50, unique=True)
-    title = models.CharField(max_length=50, blank=True)
+    title = models.CharField(max_length=50, blank=True, choices=Title.choices)
+    is_visiting = models.BooleanField(
+        default=False,
+        help_text="Tick if this is visiting / guest faculty.",
+    )
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='teachers')
     max_hours_per_day = models.PositiveIntegerField(default=4)
     max_hours_per_week = models.PositiveIntegerField(default=20)
     is_active = models.BooleanField(default=True)
 
+    @property
+    def display_name(self):
+        """Human name for the teacher, falling back to the username."""
+        return self.user.get_full_name().strip() or self.user.get_username()
+
+    @property
+    def ranked_name(self):
+        """Title + name, e.g. 'Dr. Jane Doe' (no employee number)."""
+        title = f"{self.title} " if self.title else ""
+        return f"{title}{self.display_name}".strip()
+
     def __str__(self):
-        return f"{self.title} {self.user.get_full_name()} ({self.employee_id})"
+        return self.ranked_name
 
 
 class ClassRepProfile(models.Model):
@@ -61,7 +86,7 @@ class ClassRepProfile(models.Model):
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.user.get_full_name()} — {self.section.name}"
+        return f"{self.user.get_full_name()} ({self.section.name})"
 
 
 class ClassSession(models.Model):

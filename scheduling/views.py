@@ -3,7 +3,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
-from core.mixins import SchoolFormMixin
+from core.mixins import SchoolFormMixin, ProtectedDeleteMixin
 from core.tenant import filter_by_school
 from .models import TimeSlot, Constraint
 from .forms import TimeSlotForm, ConstraintForm
@@ -40,12 +40,10 @@ class TimeSlotUpdateView(SchedulingAdminCRUDMixin, UpdateView):
         messages.success(self.request, "Time Slot updated successfully.")
         return super().form_valid(form)
 
-class TimeSlotDeleteView(SchedulingAdminCRUDMixin, DeleteView):
+class TimeSlotDeleteView(ProtectedDeleteMixin, SchedulingAdminCRUDMixin, DeleteView):
     model = TimeSlot
     success_url = reverse_lazy('scheduling:timeslot_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Time Slot deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Time Slot deleted successfully."
 
 # -- Constraint --
 class ConstraintListView(SchedulingAdminCRUDMixin, ListView):
@@ -85,9 +83,7 @@ class ConstraintUpdateView(SchedulingAdminCRUDMixin, UpdateView):
                 messages.error(self.request, f"{field}: {error}")
         return super().form_invalid(form)
 
-class ConstraintDeleteView(SchedulingAdminCRUDMixin, DeleteView):
+class ConstraintDeleteView(ProtectedDeleteMixin, SchedulingAdminCRUDMixin, DeleteView):
     model = Constraint
     success_url = reverse_lazy('scheduling:constraint_list')
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, "Constraint deleted successfully.")
-        return super().delete(request, *args, **kwargs)
+    success_message = "Constraint deleted successfully."

@@ -11,9 +11,38 @@
                 <div class="card-body">
                     <p>Are you sure you want to delete <strong>{{ object }}</strong>?</p>
                     <p class="text-muted small">This action cannot be undone.</p>
+
+                    {% if delete_blockers %}
+                    <div class="alert alert-warning" role="alert">
+                        <strong>This record cannot be deleted yet.</strong>
+                        Other records still depend on it:
+                        <ul class="mb-0 mt-2">
+                            {% for blocker in delete_blockers %}
+                            <li>
+                                {{ blocker.count }} {{ blocker.label }}
+                                {% if blocker.samples %}
+                                    <span class="text-muted">
+                                        (e.g. {{ blocker.samples|join:", " }}{% if blocker.count > blocker.samples|length %}, …{% endif %})
+                                    </span>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        <p class="mb-0 mt-2 small">
+                            Remove or reassign those records first. Database integrity will not be bypassed.
+                        </p>
+                    </div>
+                    {% endif %}
+
                     <form method="post">
                         {% csrf_token %}
+                        {% if delete_blockers %}
+                        <button type="submit" class="btn btn-danger" disabled title="Remove dependent records first">
+                            Yes, delete it
+                        </button>
+                        {% else %}
                         <button type="submit" class="btn btn-danger">Yes, delete it</button>
+                        {% endif %}
                         <a href="{% block cancel_url %}#{% endblock %}" class="btn btn-outline-secondary">Cancel</a>
                     </form>
                 </div>

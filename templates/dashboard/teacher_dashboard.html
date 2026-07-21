@@ -1,59 +1,119 @@
 {% extends 'base.html' %}
 
+{% block title %}Dashboard · TimeForge{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <h1 class="h3">Teacher Dashboard</h1>
-            <p class="text-muted">Welcome back, {{ user.get_full_name }}.</p>
+
+    {# Greeting #}
+    <div class="row align-items-center g-3 mb-4">
+        <div class="col-lg-7">
+            <p class="eyebrow mb-1">Teacher</p>
+            <h1 class="page-title h2 mb-1" id="greetingTitle">Welcome back, {{ user.get_full_name|default:user.get_username }}</h1>
+            <p class="text-muted mb-0">
+                <i data-lucide="calendar" class="icon-sm"></i> {% now "l, F j, Y" %}
+                {% if active_semester %}<span class="divider-dot">·</span><i data-lucide="graduation-cap" class="icon-sm"></i> {{ active_semester.name }}{% endif %}
+            </p>
         </div>
-        <div class="col-md-4 text-md-end">
-            <a href="{% url 'academics:teacher_portal' %}" class="btn btn-outline-primary">
-                <i class="bi bi-calendar-check me-2"></i>Update Availability
-            </a>
+        <div class="col-lg-5">
+            <div class="d-flex flex-wrap justify-content-lg-end gap-2">
+                <a href="{% url 'academics:teacher_portal' %}" class="btn btn-outline-secondary"><i data-lucide="calendar-check" class="icon-sm"></i> Update Availability</a>
+                <a href="{% url 'timetable:my_routine' %}" class="btn btn-primary"><i data-lucide="calendar-days" class="icon-sm"></i> My Routine</a>
+            </div>
         </div>
     </div>
 
     {% if not has_timetable %}
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm bg-light">
-                <div class="card-body text-center py-5">
-                    <div class="text-muted mb-3">
-                        <i class="bi bi-calendar-x fs-1"></i>
-                    </div>
-                    <h4 class="text-muted">No Timetable Available</h4>
-                    <p class="text-muted mx-auto" style="max-width: 500px;">
-                        The administration has not yet published a timetable for this semester. 
-                        Once published, your daily schedule and assigned class sessions will appear here.
-                    </p>
-                    <p class="text-muted mt-4 small">
-                        Please ensure your <a href="{% url 'academics:teacher_portal' %}">availability settings</a> are up to date!
-                    </p>
-                </div>
-            </div>
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5">
+            <span class="empty-state-icon mb-3"><i data-lucide="calendar-off"></i></span>
+            <h4 class="mt-2 mb-1">No timetable available</h4>
+            <p class="text-muted mx-auto mb-3" style="max-width: 520px;">
+                The administration has not published a timetable for this semester yet. Once published, your
+                daily schedule and assigned class sessions will appear here.
+            </p>
+            <a href="{% url 'academics:teacher_portal' %}" class="btn btn-outline-secondary">Check your availability</a>
         </div>
     </div>
     {% else %}
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm border-0">
-                <div class="card-body py-5 text-center bg-white rounded">
-                    <i class="bi bi-calendar2-week text-primary fs-1 mb-3 d-block"></i>
-                    <h3 class="h4 mb-3">Your Timetable is Ready</h3>
-                    <p class="text-muted mb-4">See your next class and full weekly schedule at a glance.</p>
-                    <a href="{% url 'timetable:my_routine' %}" class="btn btn-primary btn-lg px-4 rounded-pill">
-                        My Routine <i class="bi bi-arrow-right ms-2"></i>
-                    </a>
-                    <div class="mt-3">
-                        <a href="{% url 'timetable:teacher_view' %}" class="text-muted small text-decoration-none">
-                            Browse full teacher grid
-                        </a>
+    <div class="row g-4">
+        {# Next class #}
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="alarm-clock" style="color: var(--tf-accent);"></i> Next Class
+                </div>
+                <div class="card-body">
+                    {% if next_slot %}
+                    <div class="metric-label">{{ next_slot.timeslot.start_time|time:"g:i A" }} to {{ next_slot.timeslot.end_time|time:"g:i A" }}</div>
+                    <div class="h4 mt-2 mb-1" style="font-family: var(--tf-serif); color: var(--tf-primary);">{{ next_slot.class_session.subject.code }}</div>
+                    <div class="fw-semibold mb-3">{{ next_slot.class_session.subject.name }}</div>
+                    <div class="d-flex flex-column gap-2">
+                        <span class="entity-meta"><i data-lucide="door-open"></i> {{ next_slot.room.name }}</span>
+                        <span class="entity-meta"><i data-lucide="users"></i> {{ next_slot.class_session.section.name }}</span>
                     </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <span class="empty-state-icon mb-3"><i data-lucide="coffee"></i></span>
+                        <p class="text-muted mb-0">No more classes today.</p>
+                    </div>
+                    {% endif %}
+                    <div class="mt-3 pt-3" style="border-top: 1px solid var(--tf-border-soft);">
+                        <span class="metric-label">This week</span>
+                        <span class="fw-semibold ms-2">{{ week_slot_count }} class{{ week_slot_count|pluralize:"es" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Today's schedule #}
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <span class="d-flex align-items-center gap-2"><i data-lucide="clock" style="color: var(--tf-accent);"></i> Today’s Schedule <span class="text-muted fw-normal">· {{ today_weekday }}</span></span>
+                    <a href="{% url 'timetable:teacher_view' %}" class="btn btn-sm btn-outline-secondary">Full grid <i data-lucide="arrow-right" class="icon-sm"></i></a>
+                </div>
+                <div class="card-body">
+                    {% if today_schedule %}
+                    <div class="tf-timeline">
+                        {% for slot in today_schedule %}
+                        <div class="tf-timeline-item">
+                            <div class="tf-timeline-time">
+                                <span class="fw-semibold">{{ slot.timeslot.start_time|time:"g:i A" }}</span>
+                                <span class="text-muted small d-block">{{ slot.timeslot.end_time|time:"g:i A" }}</span>
+                            </div>
+                            <div class="tf-timeline-body">
+                                <div class="fw-semibold">{{ slot.class_session.subject.code }} <span class="text-muted fw-normal">· {{ slot.class_session.subject.name }}</span></div>
+                                <div class="text-muted small d-flex flex-wrap gap-3 mt-1">
+                                    <span><i data-lucide="door-open" class="icon-sm"></i> {{ slot.room.name }}</span>
+                                    <span><i data-lucide="users" class="icon-sm"></i> {{ slot.class_session.section.name }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <span class="empty-state-icon mb-3"><i data-lucide="coffee"></i></span>
+                        <h5 class="mt-2 mb-1">Nothing scheduled today</h5>
+                        <p class="text-muted mb-0">Enjoy the quiet on {{ today_weekday }}.</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const h = new Date().getHours();
+    const greet = h < 12 ? "Good morning" : (h < 17 ? "Good afternoon" : "Good evening");
+    const t = document.getElementById("greetingTitle");
+    if (t) t.textContent = greet + ", {{ user.get_full_name|default:user.get_username|escapejs }}";
+});
+</script>
 {% endblock %}

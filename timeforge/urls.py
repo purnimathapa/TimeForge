@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from core.views import HomeView
+from dashboard.views import DashboardView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,6 +26,6 @@ urlpatterns = [
     path('scheduling/', include('scheduling.urls')),
     path('dashboard/', include('dashboard.urls')),
     path('timetable/', include('timetable.urls')),
-    path('', HomeView.as_view(), name='home'),
+    path('', DashboardView.as_view(), name='home'),
 ]
 

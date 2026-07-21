@@ -1,166 +1,164 @@
-<aside class="sidebar bg-dark text-white p-3 d-none d-md-flex flex-column shadow" id="mainSidebar">
+<aside class="sidebar text-white d-none d-md-flex flex-column" id="mainSidebar">
     {% if user.is_authenticated %}
-    <div class="mb-4 px-3">
-        <a href="{% url 'dashboard:dashboard' %}" class="text-white text-decoration-none">
-            <h5 class="mb-0"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h5>
+    <div class="mb-3 px-2 pt-1">
+        <a href="{% url 'dashboard:dashboard' %}" class="text-white text-decoration-none d-flex align-items-center gap-2">
+            <i data-lucide="calendar-clock" class="icon-lg" style="color: var(--tf-accent);"></i>
+            <span class="h5 mb-0">TimeForge</span>
         </a>
     </div>
     {% endif %}
 
     {% if user.is_authenticated and user.role == 'ADMIN' %}
-    <ul class="nav nav-pills flex-column mb-auto">
+    <ul class="nav flex-column mb-auto">
         <li class="nav-item">
-            <a href="{% url 'core:department_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-building me-2"></i> Departments
+            <a href="{% url 'dashboard:dashboard' %}" class="nav-link sidebar-link">
+                <i data-lucide="layout-dashboard"></i> Dashboard
+            </a>
+        </li>
+
+        <li class="sidebar-section-label mt-3 mb-1">Institution</li>
+        <li class="nav-item">
+            <a href="{% url 'core:department_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="building-2"></i> Departments
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'core:room_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-door-open me-2"></i> Rooms
+            <a href="{% url 'core:room_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="door-open"></i> Classrooms
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'core:semester_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-calendar3-range me-2"></i> Semesters
+            <a href="{% url 'core:semester_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="calendar-range"></i> Semesters
             </a>
         </li>
-        <li class="nav-item mt-3 mb-1">
-            <small class="text-muted text-uppercase fw-bold px-3">Academics</small>
-        </li>
+
+        <li class="sidebar-section-label mt-3 mb-1">Academics</li>
         <li class="nav-item">
-            <a href="{% url 'academics:subject_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-book me-2"></i> Subjects
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="{% url 'academics:section_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-people me-2"></i> Sections
+            <a href="{% url 'academics:subject_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="book-open"></i> Subjects
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'academics:teacher_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person-workspace me-2"></i> Teachers
+            <a href="{% url 'academics:section_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="users"></i> Sections
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'academics:class_session_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-journal-bookmark me-2"></i> Class Sessions
-            </a>
-        </li>
-        <li class="nav-item mt-3 mb-1">
-            <small class="text-muted text-uppercase fw-bold px-3">Accounts</small>
-        </li>
-        <li class="nav-item">
-            <a href="{% url 'academics:teacher_create' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person-plus me-2"></i> Create Teacher
+            <a href="{% url 'academics:teacher_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="graduation-cap"></i> Teachers
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'accounts:admin_create' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-shield-plus me-2"></i> Create Admin
+            <a href="{% url 'academics:class_session_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="notebook-pen"></i> Class Sessions
+            </a>
+        </li>
+
+        <li class="sidebar-section-label mt-3 mb-1">Scheduling</li>
+        <li class="nav-item">
+            <a href="{% url 'scheduling:timeslot_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="clock"></i> Time Slots
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'accounts:class_rep_create' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person-badge me-2"></i> Create Class Rep
+            <a href="{% url 'scheduling:constraint_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="sliders-horizontal"></i> Constraints
             </a>
         </li>
-        <li class="nav-item mt-3 mb-1">
-            <small class="text-muted text-uppercase fw-bold px-3">Scheduling</small>
-        </li>
+
+        <li class="sidebar-section-label mt-3 mb-1">Timetables</li>
         <li class="nav-item">
-            <a href="{% url 'scheduling:timeslot_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-clock me-2"></i> Time Slots
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="{% url 'scheduling:constraint_list' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-sliders me-2"></i> Constraints
-            </a>
-        </li>
-        <li class="nav-item mt-3 mb-1">
-            <small class="text-muted text-uppercase fw-bold px-3">Timetable Views</small>
-        </li>
-        <li class="nav-item">
-            <a href="{% url 'timetable:teacher_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person-lines-fill me-2"></i> Teacher Timetable
+            <a href="{% url 'timetable:teacher_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="calendar-days"></i> Timetable
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:room_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-door-open me-2"></i> Room Timetable
+            <a href="{% url 'timetable:room_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="door-open"></i> By Room
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:section_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-people me-2"></i> Section Timetable
+            <a href="{% url 'timetable:section_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="users"></i> By Section
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:conflict_report' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-shield-exclamation me-2"></i> Conflict Report
+            <a href="{% url 'timetable:conflict_report' %}" class="nav-link sidebar-link">
+                <i data-lucide="shield-alert"></i> Conflicts
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:reports' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-clipboard-data me-2"></i> Reports
+            <a href="{% url 'timetable:reports' %}" class="nav-link sidebar-link">
+                <i data-lucide="bar-chart-3"></i> Analytics
             </a>
         </li>
     </ul>
+
     {% elif user.is_authenticated and user.role == 'CLASS_REP' %}
-    <ul class="nav nav-pills flex-column mb-auto">
+    <ul class="nav flex-column mb-auto">
         <li class="nav-item">
-            <a href="{% url 'timetable:my_routine' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-calendar2-check me-2"></i> My Routine
+            <a href="{% url 'timetable:my_routine' %}" class="nav-link sidebar-link">
+                <i data-lucide="calendar-check"></i> My Routine
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:section_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-people me-2"></i> Section Timetable
+            <a href="{% url 'timetable:section_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="users"></i> Section Timetable
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:room_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-door-open me-2"></i> Room Timetable
+            <a href="{% url 'timetable:room_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="door-open"></i> Room Timetable
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:directory' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-grid-3x3-gap me-2"></i> Browse Timetables
+            <a href="{% url 'timetable:directory' %}" class="nav-link sidebar-link">
+                <i data-lucide="layout-grid"></i> Browse Timetables
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'accounts:profile' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person me-2"></i> Profile
+            <a href="{% url 'accounts:profile' %}" class="nav-link sidebar-link">
+                <i data-lucide="user"></i> Profile
             </a>
         </li>
     </ul>
+
     {% elif user.is_authenticated and user.role == 'TEACHER' %}
-    <ul class="nav nav-pills flex-column mb-auto">
+    <ul class="nav flex-column mb-auto">
         <li class="nav-item">
-            <a href="{% url 'timetable:my_routine' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-calendar2-check me-2"></i> My Routine
+            <a href="{% url 'timetable:my_routine' %}" class="nav-link sidebar-link">
+                <i data-lucide="calendar-check"></i> My Routine
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'academics:teacher_portal' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-person-badge me-2"></i> My Portal
+            <a href="{% url 'academics:teacher_portal' %}" class="nav-link sidebar-link">
+                <i data-lucide="badge-check"></i> My Portal
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:teacher_view' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-calendar-week me-2"></i> Full Timetable Grid
+            <a href="{% url 'timetable:teacher_view' %}" class="nav-link sidebar-link">
+                <i data-lucide="calendar-days"></i> Timetable Grid
             </a>
         </li>
         <li class="nav-item">
-            <a href="{% url 'timetable:directory' %}" class="nav-link text-white sidebar-link">
-                <i class="bi bi-grid-3x3-gap me-2"></i> Browse Timetables
+            <a href="{% url 'timetable:directory' %}" class="nav-link sidebar-link">
+                <i data-lucide="layout-grid"></i> Browse Timetables
             </a>
         </li>
     </ul>
     {% else %}
     <div class="text-center mt-5 text-muted small">
         Navigation restricted.
+    </div>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <div class="mt-auto pt-3 px-2">
+        <div class="hairline mb-2" style="border-color: rgba(255,255,255,0.08);"></div>
+        <a href="{% url 'accounts:profile' %}" class="sidebar-link">
+            <i data-lucide="settings"></i> Settings
+        </a>
     </div>
     {% endif %}
 </aside>

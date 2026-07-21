@@ -21,14 +21,16 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views import View
-from django.views.generic import DetailView, ListView, TemplateView
+from django.views.generic import DeleteView, DetailView, ListView, TemplateView
 
 from accounts.mixins import RoleRequiredMixin
+from core.mixins import ProtectedDeleteMixin
 from academics.models import TeacherProfile, Section
-from core.models import Room, Semester
+from core.models import Department, Room, Semester
 from core.tenant import filter_by_school, school_filter
 from scheduling.engine.algorithm import run_scheduler
 from scheduling.engine.constraints import (
@@ -69,6 +71,33 @@ def _subject_colour_index(subject_code: str) -> int:
 def _get_active_semester(request):
     """Return the currently active semester for the request tenant, or None."""
     return school_filter(Semester.objects.filter(is_active=True), request).first()
+
+
+def _scoped_semesters(request):
+    return school_filter(Semester.objects.all(), request).order_by('-start_date', '-pk')
+
+
+def _scoped_departments(request):
+    return school_filter(Department.objects.filter(is_active=True), request).order_by('name')
+
+
+def _get_selected_semester(request):
+    """Resolve semester from ?semester_id=, else the active semester (then newest)."""
+    qs = _scoped_semesters(request)
+    semester_id = request.GET.get('semester_id')
+    if semester_id:
+        selected = qs.filter(pk=semester_id).first()
+        if selected is not None:
+            return selected
+    return qs.filter(is_active=True).first() or qs.first()
+
+
+def _get_selected_department(request):
+    """Optional department from ?department_id=. None means all departments."""
+    department_id = request.GET.get('department_id')
+    if not department_id:
+        return None
+    return _scoped_departments(request).filter(pk=department_id).first()
 
 
 def _scoped_timetables(request):
@@ -112,6 +141,27 @@ def _scoped_sections(request, semester=None):
     if semester is not None:
         qs = qs.filter(semester=semester)
     return qs
+
+
+def _teachers_for_filters(request, department=None):
+    qs = _scoped_teacher_profiles(request).select_related('user', 'department')
+    if department is not None:
+        qs = qs.filter(department=department)
+    return qs.order_by('user__first_name', 'user__last_name')
+
+
+def _rooms_for_filters(request, department=None):
+    qs = _scoped_rooms(request).select_related('department')
+    if department is not None:
+        qs = qs.filter(department=department)
+    return qs.order_by('name')
+
+
+def _sections_for_filters(request, semester=None, department=None):
+    qs = _scoped_sections(request, semester=semester).select_related('department', 'semester')
+    if department is not None:
+        qs = qs.filter(department=department)
+    return qs.order_by('name')
 
 
 def _school_id_for_request(request):
@@ -226,6 +276,17 @@ def _build_grid(slots, timeslots):
         }
         for p in active_periods
     ]
+
+    # Flag any wall-clock gap between consecutive periods as a break (e.g. lunch),
+    # so the grid can render a "Lunch break" row without it being schedulable.
+    for index in range(len(periods) - 1):
+        current = periods[index]
+        following = periods[index + 1]
+        if current['end_time'] != following['start_time']:
+            current['break_after'] = {
+                'start_time': current['end_time'],
+                'end_time': following['start_time'],
+            }
 
     # Build the grid dict
     grid = {d: {p: [] for p in active_periods} for d in active_days}
@@ -394,20 +455,36 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
       - get_selector_context()          → dict with selector dropdown data
       - filter_type                     → str ('teacher', 'room', or 'section')
       - filter_label                    → str (display name for current entity)
+
+    Shared query params:
+      - semester_id   → which semester's timetable versions to show
+      - department_id → optional department scope for entity dropdowns
+      - timetable_id  → version within the selected semester
+      - teacher_id / room_id / section_id → entity within the current view
     """
     template_name = 'timetable/grid.html'
     filter_type = ''
 
+    def get_selected_semester(self):
+        return _get_selected_semester(self.request)
+
+    def get_selected_department(self):
+        return _get_selected_department(self.request)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        semester = _get_active_semester(self.request)
+        semester = self.get_selected_semester()
+        department = self.get_selected_department()
         timetable, all_timetables = _get_timetable(self.request, semester)
 
         if not self.request.user.is_admin():
             all_timetables = all_timetables.filter(status=Timetable.Status.PUBLISHED)
 
         ctx['semester'] = semester
+        ctx['selected_department'] = department
+        ctx['all_semesters'] = _scoped_semesters(self.request)
+        ctx['all_departments'] = _scoped_departments(self.request)
         ctx['timetable'] = timetable
         ctx['all_timetables'] = all_timetables
         ctx['filter_type'] = self.filter_type
@@ -596,6 +673,43 @@ class DiscardDraftTimetableView(RoleRequiredMixin, View):
         return redirect('timetable:list')
 
 
+class TimetableDeleteView(RoleRequiredMixin, ProtectedDeleteMixin, DeleteView):
+    """Permanently delete a draft or archived timetable version.
+
+    Deletion cascades to this version's slots, staged change sets, and edit
+    lock (all declared on_delete=CASCADE), so it is self-contained and safe.
+    A PUBLISHED timetable is the live schedule and cannot be deleted directly;
+    it must be discarded/replaced first. Queryset is tenant-scoped so an admin
+    can only delete timetables belonging to their own school.
+    """
+    allowed_roles = ['ADMIN']
+    model = Timetable
+    template_name = 'timetable/timetable_confirm_delete.html'
+    context_object_name = 'timetable'
+    success_url = reverse_lazy('timetable:list')
+
+    def get_queryset(self):
+        return _scoped_timetables(self.request).select_related('semester')
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.status == Timetable.Status.PUBLISHED:
+            messages.error(
+                request,
+                "This timetable is published (the live schedule) and cannot be "
+                "deleted. Publish another version or discard it first.",
+            )
+            return redirect('timetable:list')
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        self.success_message = (
+            f"Timetable v{self.object.version} for "
+            f"{self.object.semester.name} was deleted."
+        )
+        return super().form_valid(form)
+
+
 # ── My Routine (mobile-first viewer) ─────────────────────────────────────
 
 class MyRoutineView(RoleRequiredMixin, TemplateView):
@@ -691,29 +805,39 @@ class TeacherTimetableView(BaseTimetableGridView):
     - Teachers see their own schedule by default; any teacher may browse others
       via ?teacher_id=.
     - Admins see a dropdown to select any teacher.
+    - Optional ?department_id= narrows the teacher list.
     """
     filter_type = 'teacher'
+
+    def _teacher_queryset(self):
+        return _teachers_for_filters(
+            self.request,
+            department=self.get_selected_department(),
+        )
 
     def _get_selected_teacher(self):
         """Resolve the teacher whose timetable to display."""
         user = self.request.user
+        qs = self._teacher_queryset()
         teacher_id = self.request.GET.get('teacher_id')
 
         if teacher_id:
-            selected = _scoped_teacher_profiles(self.request).filter(
-                pk=teacher_id,
-            ).select_related('user').first()
+            selected = qs.filter(pk=teacher_id).first()
             if selected:
                 return selected
 
         if user.is_admin():
-            return (
-                _scoped_teacher_profiles(self.request)
-                .select_related('user')
-                .order_by('user__first_name', 'user__last_name')
-                .first()
-            )
-        return getattr(user, 'teacher_profile', None)
+            return qs.first()
+
+        profile = getattr(user, 'teacher_profile', None)
+        if profile is None:
+            return None
+        department = self.get_selected_department()
+        # Keep the signed-in teacher visible even when a department filter
+        # would otherwise hide them from the dropdown.
+        if department is None or profile.department_id == department.pk:
+            return profile
+        return qs.first()
 
     def get_filter_queryset(self, timetable):
         teacher = self._get_selected_teacher()
@@ -723,17 +847,11 @@ class TeacherTimetableView(BaseTimetableGridView):
 
     def get_selector_context(self):
         teacher = self._get_selected_teacher()
-        ctx = {
+        return {
             'selected_teacher': teacher,
             'filter_label': str(teacher) if teacher else 'No teacher selected',
-            'all_teachers': (
-                _scoped_teacher_profiles(self.request)
-                .select_related('user')
-                .order_by('user__first_name', 'user__last_name')
-            ),
+            'all_teachers': self._teacher_queryset(),
         }
-
-        return ctx
 
 
 # ── Room Timetable View ───────────────────────────────────────────────────
@@ -743,11 +861,20 @@ class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
     allowed_roles = ['ADMIN', 'TEACHER', 'CLASS_REP']
     filter_type = 'room'
 
+    def _room_queryset(self):
+        return _rooms_for_filters(
+            self.request,
+            department=self.get_selected_department(),
+        )
+
     def _get_selected_room(self):
+        qs = self._room_queryset()
         room_id = self.request.GET.get('room_id')
         if room_id:
-            return _scoped_rooms(self.request).filter(pk=room_id).first()
-        return _scoped_rooms(self.request).order_by('name').first()
+            selected = qs.filter(pk=room_id).first()
+            if selected:
+                return selected
+        return qs.first()
 
     def get_filter_queryset(self, timetable):
         room = self._get_selected_room()
@@ -760,7 +887,7 @@ class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
         return {
             'selected_room': room,
             'filter_label': room.name if room else 'No room selected',
-            'all_rooms': _scoped_rooms(self.request).order_by('name'),
+            'all_rooms': self._room_queryset(),
         }
 
 
@@ -771,17 +898,27 @@ class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
     allowed_roles = ['ADMIN', 'TEACHER', 'CLASS_REP']
     filter_type = 'section'
 
+    def _section_queryset(self):
+        return _sections_for_filters(
+            self.request,
+            semester=self.get_selected_semester(),
+            department=self.get_selected_department(),
+        )
+
     def _get_selected_section(self):
-        semester = _get_active_semester(self.request)
-        qs = _scoped_sections(self.request, semester=semester)
+        qs = self._section_queryset()
         section_id = self.request.GET.get('section_id')
         if section_id:
-            return qs.filter(pk=section_id).first()
+            selected = qs.filter(pk=section_id).first()
+            if selected:
+                return selected
         if self.request.user.is_class_rep():
             profile = getattr(self.request.user, 'class_rep_profile', None)
             if profile and profile.is_active:
-                return qs.filter(pk=profile.section_id).first()
-        return qs.order_by('name').first()
+                owned = qs.filter(pk=profile.section_id).first()
+                if owned:
+                    return owned
+        return qs.first()
 
     def get_filter_queryset(self, timetable):
         section = self._get_selected_section()
@@ -792,13 +929,11 @@ class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
         )
 
     def get_selector_context(self):
-        semester = _get_active_semester(self.request)
         section = self._get_selected_section()
-        qs = _scoped_sections(self.request, semester=semester)
         return {
             'selected_section': section,
             'filter_label': section.name if section else 'No section selected',
-            'all_sections': qs.order_by('name'),
+            'all_sections': self._section_queryset(),
         }
 
 
@@ -1170,9 +1305,7 @@ class ExportTimetableView(LoginRequiredMixin, View):
         if scope == 'full' and not request.user.is_admin():
             raise PermissionDenied
 
-        # TODO: restrict teacher-scope export to the requesting teacher's own profile only.
-
-        semester = _get_active_semester(self.request)
+        semester = _get_selected_semester(request)
         timetable, _all_timetables = _get_timetable(request, semester)
         if not semester or not timetable:
             messages.warning(request, "Generate a timetable before exporting.")
@@ -1183,6 +1316,10 @@ class ExportTimetableView(LoginRequiredMixin, View):
         subtitle = f"{timetable.semester.name} - v{timetable.version} ({timetable.get_status_display()})"
         if label:
             subtitle = f"{subtitle} - {label}"
+
+        department = _get_selected_department(request)
+        if department is not None:
+            subtitle = f"{subtitle} - {department.name}"
 
         if file_format == 'pdf':
             content = export_timetable_pdf(
@@ -1246,31 +1383,52 @@ class ExportTimetableView(LoginRequiredMixin, View):
         return list(base_qs), "Full Institution Timetable", "All teachers, rooms, and sections"
 
     def _selected_teacher(self, request):
+        department = _get_selected_department(request)
+        qs = _teachers_for_filters(request, department=department)
+        profile = getattr(request.user, 'teacher_profile', None)
+
+        # Teachers may only export their own timetable — ignore foreign teacher_id.
+        if request.user.is_teacher() and not request.user.is_admin():
+            return profile
+
         teacher_id = request.GET.get('teacher_id')
-        qs = _scoped_teacher_profiles(request).select_related('user')
         if teacher_id:
-            return qs.filter(pk=teacher_id).first()
+            selected = qs.filter(pk=teacher_id).first()
+            if selected:
+                return selected
         if request.user.is_admin():
-            return qs.order_by('user__first_name', 'user__last_name').first()
-        return getattr(request.user, 'teacher_profile', None)
+            return qs.first()
+        if profile is None:
+            return None
+        if department is None or profile.department_id == department.pk:
+            return profile
+        return qs.first()
 
     def _selected_room(self, request):
+        department = _get_selected_department(request)
+        qs = _rooms_for_filters(request, department=department)
         room_id = request.GET.get('room_id')
-        qs = _scoped_rooms(request)
         if room_id:
-            return qs.filter(pk=room_id).first()
-        return qs.order_by('name').first()
+            selected = qs.filter(pk=room_id).first()
+            if selected:
+                return selected
+        return qs.first()
 
     def _selected_section(self, request, semester):
-        qs = _scoped_sections(request, semester=semester)
+        department = _get_selected_department(request)
+        qs = _sections_for_filters(request, semester=semester, department=department)
         section_id = request.GET.get('section_id')
         if section_id:
-            return qs.filter(pk=section_id).first()
+            selected = qs.filter(pk=section_id).first()
+            if selected:
+                return selected
         if request.user.is_class_rep():
             profile = getattr(request.user, 'class_rep_profile', None)
             if profile and profile.is_active:
-                return qs.filter(pk=profile.section_id).first()
-        return qs.order_by('name').first()
+                owned = qs.filter(pk=profile.section_id).first()
+                if owned:
+                    return owned
+        return qs.first()
 
 
 # ── Reports View ──────────────────────────────────────────────────────────
@@ -1309,6 +1467,31 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         ctx['room_utilization'] = room_utilization
         ctx['soft_penalties'] = soft_penalties
         ctx['total_penalty'] = total_penalty
+
+        # Constraint-satisfaction summary. Hard constraints are guaranteed by the
+        # engine (a timetable only exists if they are all satisfied); soft rules
+        # may carry penalties.
+        from django.db.models import Q
+        from scheduling.models import Constraint
+
+        active_constraints = Constraint.objects.filter(is_active=True).filter(
+            Q(semester=semester) | Q(semester__isnull=True)
+        )
+        hard_count = active_constraints.filter(is_hard=True).count()
+        soft_count = active_constraints.filter(is_hard=False).count()
+        violated_soft = len(soft_penalties)
+        satisfied_soft = max(soft_count - violated_soft, 0)
+        total_rules = hard_count + soft_count
+        satisfied_rules = hard_count + satisfied_soft
+        ctx['constraint_summary'] = {
+            'hard_count': hard_count,
+            'soft_count': soft_count,
+            'violated_soft': violated_soft,
+            'satisfied_soft': satisfied_soft,
+            'total_rules': total_rules,
+            'satisfied_rules': satisfied_rules,
+            'satisfaction_rate': round(satisfied_rules / total_rules * 100) if total_rules else 100,
+        }
         return ctx
 
     def _teacher_workloads(self, slots):

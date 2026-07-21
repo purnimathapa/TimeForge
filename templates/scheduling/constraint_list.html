@@ -1,39 +1,75 @@
-{% extends 'partials/base_list.html' %}
+{% extends 'base.html' %}
 
-{% block page_title %}Constraints{% endblock %}
+{% block title %}Constraints · TimeForge{% endblock %}
 
-{% block create_url %}{% url 'scheduling:constraint_create' %}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-1">
+        <p class="eyebrow mb-1">Scheduling</p>
+        <h1 class="page-title h3 mb-0">Constraints</h1>
+        <p class="text-muted mb-0">Rules the engine respects when building conflict-free timetables.</p>
+    </div>
 
-{% block table_headers %}
-    <th>Name</th>
-    <th>Type</th>
-    <th>Target</th>
-    <th>Hardness</th>
-    <th>Status</th>
+    <div class="list-toolbar mt-3">
+        <form method="get" class="search-inline">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" class="form-control" placeholder="Search constraints…" value="{{ request.GET.q }}">
+        </form>
+        <a href="{% url 'scheduling:constraint_create' %}" class="btn btn-primary">
+            <i data-lucide="plus" class="icon-sm"></i> Add Constraint
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 g-3">
+        {% for object in object_list %}
+        <div class="col">
+            <div class="card tf-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-start gap-3">
+                        <span class="icon-chip {% if object.is_hard %}{% else %}accent{% endif %}">
+                            <i data-lucide="{% if object.is_hard %}lock{% else %}sliders-horizontal{% endif %}"></i>
+                        </span>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-semibold">{{ object.name }}</span>
+                                {% if object.is_active %}
+                                    <span class="badge bg-success ms-auto">Enabled</span>
+                                {% else %}
+                                    <span class="badge bg-secondary ms-auto">Disabled</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-muted small mt-1">{{ object.get_constraint_type_display }}</div>
+                            <div class="d-flex flex-wrap gap-2 mt-3">
+                                {% if object.is_hard %}
+                                    <span class="badge bg-danger">Hard rule</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Soft · weight {{ object.weight }}</span>
+                                {% endif %}
+                                <span class="badge bg-primary">{{ object.get_target_type_display }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end entity-card-actions">
+                    <a href="{% url 'scheduling:constraint_update' object.pk %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="pencil" class="icon-sm"></i> Edit</a>
+                    <a href="{% url 'scheduling:constraint_delete' object.pk %}" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon-sm"></i></a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <span class="empty-state-icon mb-3"><i data-lucide="sliders-horizontal"></i></span>
+                    <h5 class="mt-2 mb-1">No constraints defined</h5>
+                    <p class="text-muted mb-3">The engine will use only built-in hard rules until you add preferences.</p>
+                    <a href="{% url 'scheduling:constraint_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon-sm"></i> Add Constraint</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% include 'partials/pagination.html' %}
+</div>
 {% endblock %}
-
-{% block table_row %}
-    <td>{{ object.name }}</td>
-    <td>{{ object.get_constraint_type_display }}</td>
-    <td>{{ object.get_target_type_display }}</td>
-    <td>
-        {% if object.is_hard %}
-            <span class="badge bg-danger">Hard</span>
-        {% else %}
-            <span class="badge bg-warning text-dark">Soft (w: {{ object.weight }})</span>
-        {% endif %}
-    </td>
-    <td>
-        {% if object.is_active %}
-            <span class="badge bg-success">Active</span>
-        {% else %}
-            <span class="badge bg-secondary">Inactive</span>
-        {% endif %}
-    </td>
-    <td class="text-end">
-        <a href="{% url 'scheduling:constraint_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-        <a href="{% url 'scheduling:constraint_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-    </td>
-{% endblock %}
-
-{% block empty_message %}No constraints found.{% endblock %}

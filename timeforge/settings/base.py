@@ -8,6 +8,7 @@ process environment. DEBUG defaults to False when unset (fail-safe).
 from pathlib import Path
 
 from decouple import Csv, config
+from django.contrib.messages import constants as message_constants
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -121,3 +122,13 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+# Map Django message levels to Bootstrap 5 alert classes.
+# Without this, errors render as alert-error (unstyled) and look "broken".
+MESSAGE_TAGS = {
+    message_constants.DEBUG: "secondary",
+    message_constants.INFO: "info",
+    message_constants.SUCCESS: "success",
+    message_constants.WARNING: "warning",
+    message_constants.ERROR: "danger",
+}

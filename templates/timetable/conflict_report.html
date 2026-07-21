@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Conflict Report — TimeForge{% endblock %}
+{% block title %}Conflict Report · TimeForge{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/timetable_grid.css' %}">
@@ -16,7 +16,7 @@
                 <i class="bi bi-shield-exclamation me-2"></i>Conflict &amp; Penalty Report
             </h1>
             {% if semester %}
-                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} — v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
+                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} · v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
             {% endif %}
         </div>
         <div class="col-md-6 text-md-end mt-2 mt-md-0">
@@ -44,7 +44,7 @@
             <select name="timetable_id" id="timetable_id" class="form-select form-select-sm" style="max-width:240px;" onchange="this.form.submit()">
                 {% for tt in all_timetables %}
                     <option value="{{ tt.pk }}" {% if timetable and tt.pk == timetable.pk %}selected{% endif %}>
-                        v{{ tt.version }} — {{ tt.get_status_display }} (penalty: {{ tt.penalty_score }})
+                        v{{ tt.version }} · {{ tt.get_status_display }} (penalty: {{ tt.penalty_score }})
                     </option>
                 {% endfor %}
             </select>

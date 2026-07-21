@@ -3,7 +3,7 @@
 {% load timetable_tags %}
 
 {% block title %}
-    {% if filter_type == 'teacher' %}Teacher{% elif filter_type == 'room' %}Room{% elif filter_type == 'section' %}Section{% endif %} Timetable — TimeForge
+    {% if filter_type == 'teacher' %}Teacher{% elif filter_type == 'room' %}Room{% elif filter_type == 'section' %}Section{% endif %} Timetable · TimeForge
 {% endblock %}
 
 {% block extra_css %}
@@ -24,26 +24,27 @@
     </div>
     {% endif %}
     {# ── Page Header ── #}
-    <div class="row mb-3 align-items-center">
-        <div class="col-md-6">
-            <h1 class="h3 mb-1">
-                <i class="bi {% if filter_type == 'teacher' %}bi-person-workspace{% elif filter_type == 'room' %}bi-door-open{% elif filter_type == 'section' %}bi-people{% endif %} me-2"></i>
-                {% if filter_type == 'teacher' %}Teacher{% elif filter_type == 'room' %}Room{% elif filter_type == 'section' %}Class / Section{% endif %} Timetable
+    <div class="row mb-3 align-items-center d-print-none">
+        <div class="col-lg-5">
+            <p class="eyebrow mb-1">Weekly Timetable</p>
+            <h1 class="page-title h3 mb-1 d-flex align-items-center gap-2">
+                <i data-lucide="{% if filter_type == 'teacher' %}graduation-cap{% elif filter_type == 'room' %}door-open{% elif filter_type == 'section' %}users{% endif %}" style="color: var(--tf-accent);"></i>
+                {% if filter_type == 'teacher' %}Teacher{% elif filter_type == 'room' %}Room{% elif filter_type == 'section' %}Class / Section{% endif %} Schedule
             </h1>
             {% if semester %}
-                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} — v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
+                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} · v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
             {% endif %}
         </div>
-        <div class="col-md-6 text-md-end mt-2 mt-md-0">
+        <div class="col-lg-7 mt-2 mt-lg-0">
             {% if timetable %}
-                <div class="d-flex flex-wrap justify-content-md-end align-items-center gap-2">
+                <div class="d-flex flex-wrap justify-content-lg-end align-items-center gap-2">
                     <span class="badge bg-secondary">{{ slot_count }} session{{ slot_count|pluralize }}</span>
                     {% if timetable.penalty_score == 0 %}
                         <span class="badge bg-success" id="timetablePenaltyBadge"><i class="bi bi-check-circle me-1"></i>No Conflicts</span>
                     {% else %}
                         <span class="badge bg-warning text-dark" id="timetablePenaltyBadge"><i class="bi bi-exclamation-triangle me-1"></i>Penalty: {{ timetable.penalty_score }}</span>
                     {% endif %}
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Export timetable">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Export and print timetable">
                         <a class="btn btn-outline-danger"
                            href="{% url 'timetable:export' filter_type 'pdf' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}">
                             <i class="bi bi-file-earmark-pdf me-1"></i>PDF
@@ -52,6 +53,9 @@
                            href="{% url 'timetable:export' filter_type 'xlsx' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}">
                             <i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel
                         </a>
+                        <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+                            <i class="bi bi-printer me-1"></i>Print
+                        </button>
                     </div>
                     {% if user.is_admin %}
                     <div class="btn-group btn-group-sm" role="group" aria-label="Export full institution timetable">
@@ -71,97 +75,184 @@
     </div>
 
     {# ── Filter Bar ── #}
-    <div class="timetable-filter-bar d-flex flex-wrap align-items-center gap-3">
-        {# Timetable version selector #}
-        {% if all_timetables %}
-        <form method="get" class="d-flex align-items-center gap-2" id="timetableVersionForm">
-            <label for="timetable_id" class="form-label mb-0 fw-semibold text-nowrap">
-                <i class="bi bi-layers me-1"></i>Version:
-            </label>
-            <select name="timetable_id" id="timetable_id" class="form-select form-select-sm" style="max-width:220px;" onchange="this.form.submit()">
-                {% for tt in all_timetables %}
-                    <option value="{{ tt.pk }}" {% if timetable and tt.pk == timetable.pk %}selected{% endif %}>
-                        v{{ tt.version }} — {{ tt.get_status_display }}
-                    </option>
-                {% endfor %}
-            </select>
+    <div class="timetable-filter-bar d-print-none">
+        <div class="row g-3 align-items-end">
+            {# View switcher: Teacher / Room / Section #}
+            <div class="col-12 col-lg-auto">
+                <label class="filter-label">View by</label>
+                <div class="btn-group view-switcher" role="group" aria-label="Choose timetable view">
+                    <a href="{% url 'timetable:teacher_view' %}?{% if semester %}semester_id={{ semester.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                       class="btn btn-sm {% if filter_type == 'teacher' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="bi bi-person-workspace me-1"></i>Teacher
+                    </a>
+                    <a href="{% url 'timetable:room_view' %}?{% if semester %}semester_id={{ semester.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                       class="btn btn-sm {% if filter_type == 'room' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="bi bi-door-open me-1"></i>Room
+                    </a>
+                    <a href="{% url 'timetable:section_view' %}?{% if semester %}semester_id={{ semester.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                       class="btn btn-sm {% if filter_type == 'section' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="bi bi-people me-1"></i>Section
+                    </a>
+                </div>
+            </div>
 
-            {# Preserve entity selector param #}
-            {% if filter_type == 'teacher' and selected_teacher %}
-                <input type="hidden" name="teacher_id" value="{{ selected_teacher.pk }}">
-            {% elif filter_type == 'room' and selected_room %}
-                <input type="hidden" name="room_id" value="{{ selected_room.pk }}">
-            {% elif filter_type == 'section' and selected_section %}
-                <input type="hidden" name="section_id" value="{{ selected_section.pk }}">
+            {# Semester #}
+            {% if all_semesters %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="semesterSelectorForm">
+                    <label for="semester_id_select" class="filter-label">
+                        <i class="bi bi-calendar3 me-1"></i>Semester
+                    </label>
+                    <select name="semester_id" id="semester_id_select" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for s in all_semesters %}
+                            <option value="{{ s.pk }}" {% if semester and s.pk == semester.pk %}selected{% endif %}>
+                                {{ s.name }}{% if s.is_active %} (Active){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if selected_department %}<input type="hidden" name="department_id" value="{{ selected_department.pk }}">{% endif %}
+                    {% if filter_type == 'teacher' and selected_teacher %}
+                        <input type="hidden" name="teacher_id" value="{{ selected_teacher.pk }}">
+                    {% elif filter_type == 'room' and selected_room %}
+                        <input type="hidden" name="room_id" value="{{ selected_room.pk }}">
+                    {% elif filter_type == 'section' and selected_section %}
+                        <input type="hidden" name="section_id" value="{{ selected_section.pk }}">
+                    {% endif %}
+                </form>
+            </div>
             {% endif %}
-        </form>
-        {% endif %}
 
-        {# Entity selector — Teacher #}
-        {% if filter_type == 'teacher' and all_teachers %}
-        <form method="get" class="d-flex align-items-center gap-2" id="teacherSelectorForm">
-            <label for="teacher_id_select" class="form-label mb-0 fw-semibold text-nowrap">
-                <i class="bi bi-person-workspace me-1"></i>Teacher:
-            </label>
-            <select name="teacher_id" id="teacher_id_select" class="form-select form-select-sm" style="max-width:280px;" onchange="this.form.submit()">
-                {% for t in all_teachers %}
-                    <option value="{{ t.pk }}" {% if selected_teacher and t.pk == selected_teacher.pk %}selected{% endif %}>
-                        {{ t.user.get_full_name }} ({{ t.employee_id }})
-                    </option>
-                {% endfor %}
-            </select>
-            {% if timetable %}
-                <input type="hidden" name="timetable_id" value="{{ timetable.pk }}">
+            {# Department (optional — blank means all) #}
+            {% if all_departments %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="departmentSelectorForm">
+                    <label for="department_id_select" class="filter-label">
+                        <i class="bi bi-building me-1"></i>Department
+                    </label>
+                    <select name="department_id" id="department_id_select" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All departments</option>
+                        {% for d in all_departments %}
+                            <option value="{{ d.pk }}" {% if selected_department and d.pk == selected_department.pk %}selected{% endif %}>
+                                {{ d.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if semester %}<input type="hidden" name="semester_id" value="{{ semester.pk }}">{% endif %}
+                    {% if timetable %}<input type="hidden" name="timetable_id" value="{{ timetable.pk }}">{% endif %}
+                </form>
+            </div>
             {% endif %}
-        </form>
 
-        {# Entity selector — Room #}
-        {% elif filter_type == 'room' and all_rooms %}
-        <form method="get" class="d-flex align-items-center gap-2" id="roomSelectorForm">
-            <label for="room_id_select" class="form-label mb-0 fw-semibold text-nowrap">
-                <i class="bi bi-door-open me-1"></i>Room:
-            </label>
-            <select name="room_id" id="room_id_select" class="form-select form-select-sm" style="max-width:280px;" onchange="this.form.submit()">
-                {% for r in all_rooms %}
-                    <option value="{{ r.pk }}" {% if selected_room and r.pk == selected_room.pk %}selected{% endif %}>
-                        {{ r.name }} ({{ r.get_room_type_display }})
-                    </option>
-                {% endfor %}
-            </select>
-            {% if timetable %}
-                <input type="hidden" name="timetable_id" value="{{ timetable.pk }}">
+            {# Entity selector (Teacher / Room / Section depending on current view) #}
+            {% if filter_type == 'teacher' and all_teachers %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="teacherSelectorForm">
+                    <label for="teacher_id_select" class="filter-label">
+                        <i class="bi bi-person-workspace me-1"></i>Teacher
+                    </label>
+                    <select name="teacher_id" id="teacher_id_select" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for t in all_teachers %}
+                            <option value="{{ t.pk }}" {% if selected_teacher and t.pk == selected_teacher.pk %}selected{% endif %}>
+                                {{ t.ranked_name }}{% if t.is_visiting %} (Visiting){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if semester %}<input type="hidden" name="semester_id" value="{{ semester.pk }}">{% endif %}
+                    {% if selected_department %}<input type="hidden" name="department_id" value="{{ selected_department.pk }}">{% endif %}
+                    {% if timetable %}<input type="hidden" name="timetable_id" value="{{ timetable.pk }}">{% endif %}
+                </form>
+            </div>
+            {% elif filter_type == 'teacher' %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <label class="filter-label">Teacher</label>
+                <p class="text-muted small mb-0">No teachers in this department.</p>
+            </div>
+            {% elif filter_type == 'room' and all_rooms %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="roomSelectorForm">
+                    <label for="room_id_select" class="filter-label">
+                        <i class="bi bi-door-open me-1"></i>Room
+                    </label>
+                    <select name="room_id" id="room_id_select" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for r in all_rooms %}
+                            <option value="{{ r.pk }}" {% if selected_room and r.pk == selected_room.pk %}selected{% endif %}>
+                                {{ r.name }} ({{ r.get_room_type_display }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if semester %}<input type="hidden" name="semester_id" value="{{ semester.pk }}">{% endif %}
+                    {% if selected_department %}<input type="hidden" name="department_id" value="{{ selected_department.pk }}">{% endif %}
+                    {% if timetable %}<input type="hidden" name="timetable_id" value="{{ timetable.pk }}">{% endif %}
+                </form>
+            </div>
+            {% elif filter_type == 'room' %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <label class="filter-label">Room</label>
+                <p class="text-muted small mb-0">No rooms in this department.</p>
+            </div>
+            {% elif filter_type == 'section' and all_sections %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="sectionSelectorForm">
+                    <label for="section_id_select" class="filter-label">
+                        <i class="bi bi-people me-1"></i>Section
+                    </label>
+                    <select name="section_id" id="section_id_select" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for s in all_sections %}
+                            <option value="{{ s.pk }}" {% if selected_section and s.pk == selected_section.pk %}selected{% endif %}>
+                                {{ s.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if semester %}<input type="hidden" name="semester_id" value="{{ semester.pk }}">{% endif %}
+                    {% if selected_department %}<input type="hidden" name="department_id" value="{{ selected_department.pk }}">{% endif %}
+                    {% if timetable %}<input type="hidden" name="timetable_id" value="{{ timetable.pk }}">{% endif %}
+                </form>
+            </div>
+            {% elif filter_type == 'section' %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <label class="filter-label">Section</label>
+                <p class="text-muted small mb-0">No sections for this semester / department.</p>
+            </div>
             {% endif %}
-        </form>
 
-        {# Entity selector — Section #}
-        {% elif filter_type == 'section' and all_sections %}
-        <form method="get" class="d-flex align-items-center gap-2" id="sectionSelectorForm">
-            <label for="section_id_select" class="form-label mb-0 fw-semibold text-nowrap">
-                <i class="bi bi-people me-1"></i>Section:
-            </label>
-            <select name="section_id" id="section_id_select" class="form-select form-select-sm" style="max-width:280px;" onchange="this.form.submit()">
-                {% for s in all_sections %}
-                    <option value="{{ s.pk }}" {% if selected_section and s.pk == selected_section.pk %}selected{% endif %}>
-                        {{ s.name }}
-                    </option>
-                {% endfor %}
-            </select>
-            {% if timetable %}
-                <input type="hidden" name="timetable_id" value="{{ timetable.pk }}">
+            {# Timetable version selector #}
+            {% if all_timetables %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <form method="get" id="timetableVersionForm">
+                    <label for="timetable_id" class="filter-label">
+                        <i class="bi bi-layers me-1"></i>Version
+                    </label>
+                    <select name="timetable_id" id="timetable_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for tt in all_timetables %}
+                            <option value="{{ tt.pk }}" {% if timetable and tt.pk == timetable.pk %}selected{% endif %}>
+                                v{{ tt.version }} · {{ tt.get_status_display }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if semester %}<input type="hidden" name="semester_id" value="{{ semester.pk }}">{% endif %}
+                    {% if selected_department %}<input type="hidden" name="department_id" value="{{ selected_department.pk }}">{% endif %}
+                    {% if filter_type == 'teacher' and selected_teacher %}
+                        <input type="hidden" name="teacher_id" value="{{ selected_teacher.pk }}">
+                    {% elif filter_type == 'room' and selected_room %}
+                        <input type="hidden" name="room_id" value="{{ selected_room.pk }}">
+                    {% elif filter_type == 'section' and selected_section %}
+                        <input type="hidden" name="section_id" value="{{ selected_section.pk }}">
+                    {% endif %}
+                </form>
+            </div>
             {% endif %}
-        </form>
-        {% endif %}
+        </div>
     </div>
 
     {% if user.is_admin and timetable and edit_lock_held_by_other %}
-    <div class="alert alert-warning d-flex align-items-center mt-3 mb-0" role="alert">
+    <div class="alert alert-warning d-flex align-items-center mt-3 mb-0 d-print-none" role="alert">
         <i class="bi bi-lock-fill me-2"></i>
         <span>This timetable is being edited by <strong>{{ edit_lock_holder }}</strong>. Batch changes are read-only until the lock expires.</span>
     </div>
     {% endif %}
 
     {% if user.is_admin and timetable and slot_count %}
-    <div class="timetable-editor-toolbar d-flex flex-wrap align-items-center gap-2 mt-3">
+    <div class="timetable-editor-toolbar d-flex flex-wrap align-items-center gap-2 mt-3 d-print-none">
         <div class="btn-group btn-group-sm" role="group" aria-label="Batch editor actions">
             <button type="button" class="btn btn-outline-primary" id="checkChangesBtn" disabled>
                 <i class="bi bi-search me-1"></i>Check Changes
@@ -182,8 +273,8 @@
     {% if not semester %}
     <div class="card shadow-sm mt-4">
         <div class="card-body text-center py-5">
-            <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
-            <h5 class="text-muted">No Active Semester</h5>
+            <span class="empty-state-icon mb-3"><i data-lucide="calendar-off"></i></span>
+            <h5 class="mt-2">No Active Semester</h5>
             <p class="text-muted mb-0">Please set an active semester before viewing timetables.</p>
         </div>
     </div>
@@ -192,8 +283,8 @@
     {% elif not timetable %}
     <div class="card shadow-sm mt-4">
         <div class="card-body text-center py-5">
-            <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
-            <h5 class="text-muted">No Timetable Generated Yet</h5>
+            <span class="empty-state-icon mb-3"><i data-lucide="calendar-plus"></i></span>
+            <h5 class="mt-2">No Timetable Generated Yet</h5>
             <p class="text-muted mb-0">Generate a timetable for <strong>{{ semester.name }}</strong> first.</p>
         </div>
     </div>
@@ -202,8 +293,8 @@
     {% elif slot_count == 0 %}
     <div class="card shadow-sm mt-4">
         <div class="card-body text-center py-5">
-            <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
-            <h5 class="text-muted">No Sessions Scheduled</h5>
+            <span class="empty-state-icon mb-3"><i data-lucide="inbox"></i></span>
+            <h5 class="mt-2">No Sessions Scheduled</h5>
             <p class="text-muted mb-0">
                 {% if filter_type == 'teacher' and selected_teacher %}
                     <strong>{{ selected_teacher }}</strong> has no scheduled sessions in this timetable.
@@ -220,35 +311,50 @@
 
     {# ── Timetable Grid ── #}
     {% else %}
+    {# Print-only heading so a printed sheet identifies itself #}
+    <div class="timetable-print-header d-none d-print-block">
+        <h2>
+            {% if filter_type == 'teacher' and selected_teacher %}{{ selected_teacher.ranked_name }}
+            {% elif filter_type == 'room' and selected_room %}Room · {{ selected_room.name }}
+            {% elif filter_type == 'section' and selected_section %}Section · {{ selected_section.name }}
+            {% else %}Weekly Timetable{% endif %}
+        </h2>
+        {% if semester %}<p>{{ semester.name }}{% if timetable %} · Version {{ timetable.version }}{% endif %}</p>{% endif %}
+    </div>
+
     <div class="timetable-grid-wrapper mt-2">
         <table class="timetable-grid is-editable" id="timetableGrid">
             <thead>
                 <tr>
-                    <th class="period-header">Period</th>
-                    {% for day in days %}
-                        <th>{{ day.name }}</th>
+                    <th class="corner-header" scope="col">Day / Time</th>
+                    {% for period in periods %}
+                        <th class="time-header" scope="col">
+                            <span class="time-range">{{ period.start_time|time:"H:i" }}&ndash;{{ period.end_time|time:"H:i" }}</span>
+                            <span class="time-period">Period {{ period.number }}</span>
+                        </th>
+                        {% if period.break_after %}
+                        <th class="time-header lunch-header" scope="col">
+                            <span class="time-range"><i class="bi bi-cup-hot-fill"></i></span>
+                            <span class="time-period">Lunch</span>
+                        </th>
+                        {% endif %}
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
-                {% for period in periods %}
+                {% for day in days %}
                 <tr>
-                    {# Period label cell #}
-                    <td class="period-label">
-                        P{{ period.number }}
-                        <span class="period-time">
-                            {{ period.start_time|time:"H:i" }}–{{ period.end_time|time:"H:i" }}
-                        </span>
-                    </td>
+                    <th class="day-header" scope="row">{{ day.name }}</th>
 
-                    {# One cell per day #}
-                    {% for day in days %}
+                    {# One cell per period (time slot) #}
+                    {% for period in periods %}
                         {% with day_data=grid|lookup:day.number %}
                             {% with cell_slots=day_data|lookup:period.number %}
                             <td class="timetable-drop-zone {% if not cell_slots %}empty-cell{% endif %}"
                                 id="cell-{{ day.number }}-{{ period.number }}"
                                 data-day="{{ day.number }}"
                                 data-period="{{ period.number }}"
+                                data-period-label="Period {{ period.number }} ({{ period.start_time|time:'H:i' }} to {{ period.end_time|time:'H:i' }})"
                                 {% if selected_room %}data-room-id="{{ selected_room.pk }}"{% endif %}>
                                 {% for slot in cell_slots %}
                                 <div class="activity-card {{ slot.colour_class }}{% if slot.is_locked %} is-locked{% endif %}"
@@ -271,33 +377,41 @@
                                             </button>
                                         {% endif %}
                                     </div>
+
+                                    {# Subject code — kept in .activity-subject for the editor JS #}
                                     <div class="activity-subject" title="{{ slot.class_session.subject.name }}">
                                         {{ slot.class_session.subject.code }}
                                     </div>
+                                    <div class="activity-name">{{ slot.class_session.subject.name }}</div>
 
-                                    {# Show details that are NOT redundant for the current filter #}
-                                    {% if filter_type != 'teacher' and slot.teacher %}
-                                    <div class="activity-detail" title="{{ slot.teacher.user.get_full_name }}">
-                                        <i class="bi bi-person-fill"></i> {{ slot.teacher.user.get_full_name }}
+                                    {% if slot.teacher %}
+                                    <div class="activity-detail" title="{{ slot.teacher.display_name }}">
+                                        <i class="bi bi-person-fill"></i> {{ slot.teacher.display_name }}
                                     </div>
                                     {% endif %}
 
-                                    {% if filter_type != 'room' %}
                                     <div class="activity-detail" title="{{ slot.room.name }}">
-                                        <i class="bi bi-door-open-fill"></i> {{ slot.room.name }}
+                                        <i class="bi bi-geo-alt-fill"></i> {{ slot.room.name }}
                                     </div>
-                                    {% endif %}
 
-                                    {% if filter_type != 'section' %}
-                                    <div class="activity-detail" title="{{ slot.class_session.section.name }}">
-                                        <i class="bi bi-people-fill"></i> {{ slot.class_session.section.name }}
+                                    <div class="activity-detail activity-time">
+                                        <i class="bi bi-clock"></i> {{ period.start_time|time:"H:i" }}&ndash;{{ period.end_time|time:"H:i" }}
                                     </div>
-                                    {% endif %}
+
+                                    {# Extra detail revealed on hover #}
+                                    <div class="activity-extra">
+                                        <span class="activity-detail"><i class="bi bi-people-fill"></i> {{ slot.class_session.section.name }}</span>
+                                    </div>
                                 </div>
                                 {% endfor %}
                             </td>
                             {% endwith %}
                         {% endwith %}
+                        {% if period.break_after and forloop.parentloop.first %}
+                        <td class="lunch-col" rowspan="{{ days|length }}">
+                            <span class="lunch-col-text"><i class="bi bi-cup-hot-fill"></i> Lunch break</span>
+                        </td>
+                        {% endif %}
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -306,7 +420,7 @@
     </div>
     {% endif %}
 
-    <div class="toast-container position-fixed bottom-0 end-0 p-3" id="timetableToastContainer"></div>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3 d-print-none" id="timetableToastContainer"></div>
 </div>
 {% endblock %}
 

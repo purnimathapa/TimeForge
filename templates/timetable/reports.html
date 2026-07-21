@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Timetable Reports - TimeForge{% endblock %}
+{% block title %}Timetable Reports · TimeForge{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -10,7 +10,7 @@
                 <i class="bi bi-clipboard-data me-2"></i>Timetable Reports
             </h1>
             {% if semester %}
-                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} - v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
+                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} · v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
             {% endif %}
         </div>
         <div class="col-md-5 text-md-end mt-2 mt-md-0">
@@ -71,6 +71,49 @@
                 <div class="card-body">
                     <div class="text-muted small text-uppercase fw-semibold">Soft Penalty</div>
                     <div class="display-6">{{ total_penalty }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Constraint satisfaction #}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i data-lucide="shield-check" style="color: var(--tf-accent);"></i> Constraint Satisfaction
+        </div>
+        <div class="card-body">
+            <div class="row align-items-center g-4">
+                <div class="col-md-3 text-center">
+                    <div class="metric-value" style="font-size: 2.6rem;">{{ constraint_summary.satisfaction_rate }}%</div>
+                    <div class="metric-label mt-1">Rules satisfied</div>
+                    <div class="text-muted small mt-1">{{ constraint_summary.satisfied_rules }} of {{ constraint_summary.total_rules }}</div>
+                </div>
+                <div class="col-md-9">
+                    <div class="row row-cols-2 row-cols-lg-4 g-3">
+                        <div class="col">
+                            <div class="entity-meta"><i data-lucide="lock"></i> Hard rules</div>
+                            <div class="fw-semibold mt-1">{{ constraint_summary.hard_count }} enforced</div>
+                            <div class="text-success small">All satisfied</div>
+                        </div>
+                        <div class="col">
+                            <div class="entity-meta"><i data-lucide="sliders-horizontal"></i> Soft rules</div>
+                            <div class="fw-semibold mt-1">{{ constraint_summary.soft_count }} active</div>
+                        </div>
+                        <div class="col">
+                            <div class="entity-meta"><i data-lucide="check"></i> Soft satisfied</div>
+                            <div class="fw-semibold mt-1 text-success">{{ constraint_summary.satisfied_soft }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="entity-meta"><i data-lucide="triangle-alert"></i> Soft violated</div>
+                            <div class="fw-semibold mt-1 {% if constraint_summary.violated_soft %}text-danger{% else %}text-success{% endif %}">{{ constraint_summary.violated_soft }}</div>
+                        </div>
+                    </div>
+                    <div class="progress mt-3" role="progressbar" style="height: 8px;">
+                        <div class="progress-bar" style="width: {{ constraint_summary.satisfaction_rate }}%; background-color: var(--tf-primary);"></div>
+                    </div>
+                    <p class="text-muted small mb-0 mt-2">
+                        Hard constraints are guaranteed by the scheduling engine. A published timetable only exists when every hard rule is satisfied. Soft rules may carry penalties, listed below.
+                    </p>
                 </div>
             </div>
         </div>

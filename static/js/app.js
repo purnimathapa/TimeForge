@@ -1,4 +1,9 @@
 document.addEventListener("DOMContentLoaded", function() {
+    // Render Lucide icons (<i data-lucide="name"></i>)
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+        window.lucide.createIcons();
+    }
+
     // Sidebar toggle logic for mobile
     const sidebarToggle = document.getElementById("sidebarToggle");
     const mainSidebar = document.getElementById("mainSidebar");
@@ -24,13 +29,33 @@ document.addEventListener("DOMContentLoaded", function() {
     // Handle active state highlighting for sidebar links
     const currentPath = window.location.pathname;
     const sidebarLinks = document.querySelectorAll('.sidebar-link');
-    
+    let bestMatch = null;
+
     sidebarLinks.forEach(link => {
-        // If href matches current path and isn't just '#'
-        if (link.getAttribute('href') !== '#' && link.getAttribute('href') === currentPath) {
-            link.classList.add('active');
-        } else {
-            link.classList.remove('active');
+        link.classList.remove('active');
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        if (href === currentPath) {
+            bestMatch = link;
+        } else if (currentPath.startsWith(href) && href !== '/') {
+            // Prefer the longest prefix match (most specific section)
+            if (!bestMatch || href.length > bestMatch.getAttribute('href').length) {
+                if (bestMatch === null || bestMatch.getAttribute('href') !== currentPath) {
+                    bestMatch = link;
+                }
+            }
         }
+    });
+    if (bestMatch) bestMatch.classList.add('active');
+
+    // Show a loading spinner on submit buttons inside data-loading-form forms
+    document.querySelectorAll('[data-loading-form]').forEach(form => {
+        form.addEventListener('submit', function () {
+            const btn = form.querySelector('[data-loading-btn]');
+            if (btn) {
+                btn.classList.add('is-loading');
+                btn.disabled = true;
+            }
+        });
     });
 });

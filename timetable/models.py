@@ -73,7 +73,7 @@ class Timetable(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.semester.name} — v{self.version} ({self.get_status_display()})"
+        return f"{self.semester.name} · v{self.version} ({self.get_status_display()})"
 
     @property
     def slot_count(self):

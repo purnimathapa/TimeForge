@@ -1,33 +1,62 @@
-{% extends 'partials/base_list.html' %}
+{% extends 'base.html' %}
 
-{% block page_title %}Subjects{% endblock %}
+{% block title %}Subjects · TimeForge{% endblock %}
 
-{% block create_url %}{% url 'academics:subject_create' %}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-1">
+        <p class="eyebrow mb-1">Academics</p>
+        <h1 class="page-title h3 mb-0">Subjects</h1>
+    </div>
 
-{% block table_headers %}
-    <th>Code</th>
-    <th>Name</th>
-    <th>Credits</th>
-    <th>Department</th>
-    <th>Status</th>
+    <div class="list-toolbar mt-3">
+        <form method="get" class="search-inline">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" class="form-control" placeholder="Search subjects…" value="{{ request.GET.q }}">
+        </form>
+        <a href="{% url 'academics:subject_create' %}" class="btn btn-primary">
+            <i data-lucide="plus" class="icon-sm"></i> Add Subject
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        {% for object in object_list %}
+        <div class="col">
+            <div class="card tf-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="card-code-chip">{{ object.code }}</span>
+                        <span class="badge {% if object.is_active %}bg-success{% else %}bg-secondary{% endif %} ms-auto">
+                            {% if object.is_active %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </div>
+                    <div class="fw-semibold mb-2">{{ object.name }}</div>
+                    <div class="d-flex flex-column gap-2">
+                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department.name }}</span>
+                        <span class="entity-meta"><i data-lucide="award"></i> {{ object.credit_hours }} credits</span>
+                        <span class="entity-meta"><i data-lucide="clock"></i> {{ object.lecture_hours_per_week }} lecture{% if object.lab_hours_per_week %} · {{ object.lab_hours_per_week }} lab{% endif %} hrs/week</span>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end entity-card-actions">
+                    <a href="{% url 'academics:subject_update' object.pk %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="pencil" class="icon-sm"></i> Edit</a>
+                    <a href="{% url 'academics:subject_delete' object.pk %}" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon-sm"></i></a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <span class="empty-state-icon mb-3"><i data-lucide="book-open"></i></span>
+                    <h5 class="mt-2 mb-1">No subjects yet</h5>
+                    <p class="text-muted mb-3">Define subjects before creating class sessions.</p>
+                    <a href="{% url 'academics:subject_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon-sm"></i> Add Subject</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% include 'partials/pagination.html' %}
+</div>
 {% endblock %}
-
-{% block table_row %}
-    <td>{{ object.code }}</td>
-    <td>{{ object.name }}</td>
-    <td>{{ object.credit_hours }}</td>
-    <td>{{ object.department.name }}</td>
-    <td>
-        {% if object.is_active %}
-            <span class="badge bg-success">Active</span>
-        {% else %}
-            <span class="badge bg-secondary">Inactive</span>
-        {% endif %}
-    </td>
-    <td class="text-end">
-        <a href="{% url 'academics:subject_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-        <a href="{% url 'academics:subject_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-    </td>
-{% endblock %}
-
-{% block empty_message %}No subjects found.{% endblock %}

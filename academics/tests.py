@@ -88,9 +88,14 @@ class AcademicsModelTests(TestCase):
             )
 
     def test_teacher_profile_creation(self):
-        teacher = TeacherProfile.objects.create(user=self.user, employee_id="T123")
+        teacher = TeacherProfile.objects.create(
+            user=self.user, employee_id="T123", title=TeacherProfile.Title.DR,
+        )
         self.assertEqual(teacher.employee_id, "T123")
-        self.assertIn("T123", str(teacher))
+        # The string shows the ranked name, not the employee number.
+        self.assertIn(teacher.display_name, str(teacher))
+        self.assertIn("Dr.", str(teacher))
+        self.assertNotIn("T123", str(teacher))
 
 
 class ClassRepProfileTests(TestCase):

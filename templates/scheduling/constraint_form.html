@@ -1,30 +1,126 @@
-{% extends 'partials/base_form.html' %}
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
 
-{% block page_title %}{% if object %}Edit Constraint{% else %}Create Constraint{% endif %}{% endblock %}
-{% block page_subtitle %}{% if object %}Update existing constraint details.{% else %}Define a new scheduling constraint.{% endif %}{% endblock %}
-
-{% block cancel_url %}{% url 'scheduling:constraint_list' %}{% endblock %}
+{% block title %}{% if object %}Edit Constraint{% else %}New Constraint{% endif %} · TimeForge{% endblock %}
 
 {% block content %}
-{{ block.super }}
-<div class="container-fluid mt-3">
-    <div class="row">
-        <div class="col-md-8 col-lg-6">
-            <div class="card shadow-sm border-0 bg-light">
-                <div class="card-body small text-muted">
-                    <h2 class="h6 text-dark">Parameter guide</h2>
-                    <ul class="mb-0">
-                        <li><strong>Max Daily Hours</strong> — set <code>max_daily_periods</code>.</li>
-                        <li><strong>Max Consecutive Periods</strong> — set <code>max_consecutive_periods</code>.</li>
-                        <li><strong>Preferred Teaching Time</strong> — use <code>custom_parameters</code> JSON, e.g.
-                            <code>{"preferred_days": [1, 2], "period_start": 1, "period_end": 4}</code>
-                            (days: 1=Monday … 5=Friday).
-                        </li>
-                        <li><strong>Room Type Required</strong> — set <code>required_room_type</code>.</li>
-                    </ul>
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="page-title h3 mb-1">{% if object %}Edit Rule{% else %}New Scheduling Rule{% endif %}</h1>
+            <p class="text-muted mb-0">
+                {% if object %}Update an existing scheduling rule.{% else %}Define how the engine should schedule classes. Only the fields for your chosen rule type are shown.{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="post" id="constraintForm">
+                        {% csrf_token %}
+                        {% crispy form %}
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check2 me-1"></i>Save Rule
+                            </button>
+                            <a href="{% url 'scheduling:constraint_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
                 </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header"><i class="bi bi-lightbulb me-2 text-primary"></i>Rule types explained</div>
+                <div class="card-body small">
+                    <dl class="mb-0">
+                        <dt>Max Daily Hours</dt>
+                        <dd class="text-muted">Limit how many periods a teacher/section has per day.</dd>
+                        <dt>Max Consecutive Periods</dt>
+                        <dd class="text-muted">Avoid long unbroken teaching stretches.</dd>
+                        <dt>No Adjacent Gaps</dt>
+                        <dd class="text-muted">Discourage free periods sandwiched between classes.</dd>
+                        <dt>Preferred Teaching Time</dt>
+                        <dd class="text-muted">Favour specific days and a period range. Pick them below, no code needed.</dd>
+                        <dt>Room Type Required</dt>
+                        <dd class="text-muted">Force a subject/section into a room type (e.g. Lab).</dd>
+                        <dt>Custom Rule</dt>
+                        <dd class="text-muted mb-0">Advanced JSON parameters for bespoke logic.</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="alert alert-light border mt-3 small mb-0">
+                <i class="bi bi-info-circle me-1 text-primary"></i>
+                <strong>Hard vs soft:</strong> hard rules are never broken; soft rules are preferences weighted by importance.
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("constraintForm");
+    if (!form) return;
+
+    const typeField = form.querySelector("#id_constraint_type");
+    const targetField = form.querySelector("#id_target_type");
+    const hardField = form.querySelector("#id_is_hard");
+
+    const paramByType = {
+        MAX_DAILY_HOURS: ["param-max-daily"],
+        MAX_CONSECUTIVE_PERIODS: ["param-max-consec"],
+        ROOM_TYPE_REQUIRED: ["param-room-type"],
+        PREFERRED_TEACHING_TIME: ["param-preferred"],
+        CUSTOM: ["param-custom"],
+        NO_ADJACENT_GAPS: [],
+    };
+    const allParamDivs = ["param-max-daily", "param-max-consec", "param-room-type", "param-preferred", "param-custom"];
+
+    const targetByType = {
+        TEACHER: ["tgt-teacher"],
+        SECTION: ["tgt-section"],
+        ROOM: ["tgt-room"],
+        SUBJECT: ["tgt-subject"],
+        GLOBAL: [],
+    };
+    const allTargetDivs = ["tgt-teacher", "tgt-section", "tgt-room", "tgt-subject"];
+
+    const show = (id, visible) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visible ? "" : "none";
+    };
+
+    const syncParams = () => {
+        const t = typeField ? typeField.value : "";
+        const keep = paramByType[t] || [];
+        allParamDivs.forEach(id => show(id, keep.includes(id)));
+    };
+
+    const syncTargets = () => {
+        const t = targetField ? targetField.value : "";
+        const keep = targetByType[t] || [];
+        allTargetDivs.forEach(id => show(id, keep.includes(id)));
+        // department is an optional narrowing filter, always available
+        show("tgt-department", true);
+    };
+
+    const syncWeight = () => {
+        // weight only matters for soft rules
+        show("field-weight", hardField ? !hardField.checked : true);
+    };
+
+    if (typeField) typeField.addEventListener("change", syncParams);
+    if (targetField) targetField.addEventListener("change", syncTargets);
+    if (hardField) hardField.addEventListener("change", syncWeight);
+
+    syncParams();
+    syncTargets();
+    syncWeight();
+});
+</script>
 {% endblock %}

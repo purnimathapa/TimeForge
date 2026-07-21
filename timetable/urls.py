@@ -8,6 +8,7 @@ urlpatterns = [
     path('list/',     views.TimetableListView.as_view(),     name='list'),
     path('<int:pk>/publish/', views.PublishTimetableView.as_view(), name='publish_timetable'),
     path('<int:pk>/discard/', views.DiscardDraftTimetableView.as_view(), name='discard_timetable'),
+    path('<int:pk>/delete/', views.TimetableDeleteView.as_view(), name='timetable_delete'),
     path('<int:pk>/', views.TimetableDetailView.as_view(),   name='detail'),
 
     path('my-routine/', views.MyRoutineView.as_view(), name='my_routine'),

@@ -3,12 +3,14 @@
 {% block title %}Login | TimeForge{% endblock %}
 
 {% block content %}
-<div class="container d-flex justify-content-center align-items-center" style="min-height: 70vh;">
-    <div class="card shadow-sm" style="width: 100%; max-width: 400px;">
-        <div class="card-header bg-primary text-white text-center py-3">
-            <h4 class="mb-0"><i class="bi bi-box-arrow-in-right"></i> Login</h4>
-        </div>
-        <div class="card-body p-4">
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 78vh;">
+    <div class="card shadow" style="width: 100%; max-width: 400px;">
+        <div class="card-body p-4 p-md-5">
+            <div class="text-center mb-4">
+                <span class="empty-state-icon mb-3"><i class="bi bi-calendar3"></i></span>
+                <h1 class="h4 mt-2 mb-1">Welcome to TimeForge</h1>
+                <p class="text-muted small mb-0">Sign in to manage your timetables</p>
+            </div>
             {% if form.errors %}
                 <div class="alert alert-danger">
                     Invalid username or password. Please try again.

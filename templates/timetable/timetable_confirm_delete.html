@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete Timetable · TimeForge{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-6 offset-md-3">
+            <div class="card shadow-sm border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Confirm Deletion</h5>
+                </div>
+                <div class="card-body">
+                    <p>Are you sure you want to permanently delete
+                        <strong>{{ timetable.semester.name }} · v{{ timetable.version }}</strong>
+                        ({{ timetable.get_status_display }})?</p>
+                    <p class="text-muted small">
+                        This will also remove its {{ timetable.slot_count }} scheduled
+                        session{{ timetable.slot_count|pluralize }} and any staged changes.
+                        This action cannot be undone.
+                    </p>
+                    {% if delete_blockers %}
+                    <div class="alert alert-warning" role="alert">
+                        <strong>This timetable cannot be deleted yet.</strong>
+                        Other records still depend on it:
+                        <ul class="mb-0 mt-2">
+                            {% for blocker in delete_blockers %}
+                            <li>{{ blocker.count }} {{ blocker.label }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" {% if delete_blockers %}disabled{% endif %}>
+                            <i class="bi bi-trash me-1"></i>Yes, delete it
+                        </button>
+                        <a href="{% url 'timetable:list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -2,11 +2,11 @@
     <div class="container-fluid">
         <!-- Toggle button for Sidebar (visible on mobile only) -->
         <button class="btn btn-outline-light me-2 d-md-none" type="button" id="sidebarToggle" aria-label="Toggle Sidebar">
-            <i class="bi bi-list"></i>
+            <i data-lucide="menu"></i>
         </button>
         
         <a class="navbar-brand fw-bold" href="{% url 'home' %}">
-            <i class="bi bi-calendar3"></i> TimeForge
+            <i data-lucide="calendar-clock"></i> TimeForge
         </a>
         
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -27,14 +27,14 @@
             <ul class="navbar-nav">
                 {% if user.is_authenticated %}
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-person-circle"></i> {{ user.get_username }}
+                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i data-lucide="circle-user-round"></i> {{ user.get_username }}
                         {% if user.role == 'ADMIN' %}
-                            <span class="badge bg-danger ms-1">Admin</span>
+                            <span class="badge bg-primary ms-1">Admin</span>
                         {% elif user.role == 'CLASS_REP' %}
                             <span class="badge bg-success ms-1">Class Rep</span>
                         {% else %}
-                            <span class="badge bg-info ms-1 text-dark">Teacher</span>
+                            <span class="badge badge-accent ms-1">Teacher</span>
                         {% endif %}
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">

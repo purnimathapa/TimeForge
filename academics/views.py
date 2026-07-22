@@ -6,14 +6,23 @@ from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
 from core.mixins import SchoolFormMixin, ProtectedDeleteMixin
 from core.tenant import filter_by_school
-from .models import Subject, Section, TeacherProfile, ClassSession
+from .models import Subject, Section, TeacherProfile, ClassRepProfile, ClassSession
 from scheduling.models import TeacherAvailability
-from .forms import SubjectForm, SectionForm, TeacherProfileForm, TeacherCreationForm, ClassSessionForm
+from .forms import (
+    SubjectForm,
+    SectionForm,
+    TeacherProfileForm,
+    TeacherCreationForm,
+    ClassRepProfileForm,
+    ClassRepCreationForm,
+    ClassSessionForm,
+)
 
 ACADEMICS_SCHOOL_LOOKUPS = {
     Subject: 'department__school',
     Section: 'department__school',
     TeacherProfile: 'user__school',
+    ClassRepProfile: 'user__school',
     ClassSession: 'section__department__school',
 }
 
@@ -138,6 +147,69 @@ class TeacherDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteVie
         # and TeacherAvailability. Class sessions / timetable slots SET_NULL the
         # teacher FK, so history is preserved without blocking the delete.
         obj.user.delete()
+
+
+# -- ClassRepProfile --
+class ClassRepListView(AcademicsAdminCRUDMixin, ListView):
+    model = ClassRepProfile
+    template_name = 'academics/class_rep_list.html'
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('user', 'section', 'section__department')
+        q = self.request.GET.get('q')
+        if q:
+            qs = qs.filter(
+                Q(user__first_name__icontains=q)
+                | Q(user__last_name__icontains=q)
+                | Q(user__username__icontains=q)
+                | Q(section__name__icontains=q)
+            )
+        return qs
+
+
+class ClassRepCreateView(AcademicsAdminCRUDMixin, CreateView):
+    model = ClassRepProfile
+    form_class = ClassRepCreationForm
+    template_name = 'academics/class_rep_form.html'
+    success_url = reverse_lazy('academics:class_rep_list')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['school'] = getattr(self.request, 'school', None)
+        return kwargs
+
+    def form_valid(self, form):
+        self.object = form.save()
+        messages.success(
+            self.request,
+            (
+                f"Class representative '{self.object.user.get_username()}' "
+                f"created for {self.object.section}."
+            ),
+        )
+        return redirect(self.get_success_url())
+
+
+class ClassRepUpdateView(AcademicsAdminCRUDMixin, UpdateView):
+    model = ClassRepProfile
+    form_class = ClassRepProfileForm
+    template_name = 'academics/class_rep_form.html'
+    success_url = reverse_lazy('academics:class_rep_list')
+
+    def form_valid(self, form):
+        messages.success(self.request, "Class representative updated successfully.")
+        return super().form_valid(form)
+
+
+class ClassRepDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView):
+    model = ClassRepProfile
+    template_name = 'academics/class_rep_confirm_delete.html'
+    success_url = reverse_lazy('academics:class_rep_list')
+    success_message = "Class representative deleted successfully."
+
+    def perform_delete(self, obj):
+        obj.user.delete()
+
 
 # -- ClassSession --
 class ClassSessionListView(AcademicsAdminCRUDMixin, ListView):

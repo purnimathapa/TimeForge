@@ -50,6 +50,11 @@
             </a>
         </li>
         <li class="nav-item">
+            <a href="{% url 'academics:class_rep_list' %}" class="nav-link sidebar-link">
+                <i data-lucide="user-cog"></i> Class Reps
+            </a>
+        </li>
+        <li class="nav-item">
             <a href="{% url 'academics:class_session_list' %}" class="nav-link sidebar-link">
                 <i data-lucide="notebook-pen"></i> Class Sessions
             </a>
@@ -159,6 +164,12 @@
         <a href="{% url 'accounts:profile' %}" class="sidebar-link">
             <i data-lucide="settings"></i> Settings
         </a>
+        <form method="post" action="{% url 'accounts:logout' %}" class="m-0" data-logout-form>
+            {% csrf_token %}
+            <button type="submit" class="sidebar-link border-0 bg-transparent w-100 text-start">
+                <i data-lucide="log-out"></i> Logout
+            </button>
+        </form>
     </div>
     {% endif %}
 </aside>

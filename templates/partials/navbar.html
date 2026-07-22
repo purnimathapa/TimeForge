@@ -4,15 +4,15 @@
         <button class="btn btn-outline-light me-2 d-md-none" type="button" id="sidebarToggle" aria-label="Toggle Sidebar">
             <i data-lucide="menu"></i>
         </button>
-        
+
         <a class="navbar-brand fw-bold" href="{% url 'home' %}">
             <i data-lucide="calendar-clock"></i> TimeForge
         </a>
-        
+
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
-        
+
         <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
@@ -24,43 +24,46 @@
                 </li>
                 {% endif %}
             </ul>
-            <ul class="navbar-nav">
-                {% if user.is_authenticated %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i data-lucide="circle-user-round"></i> {{ user.get_username }}
-                        {% if user.role == 'ADMIN' %}
-                            <span class="badge bg-primary ms-1">Admin</span>
-                        {% elif user.role == 'CLASS_REP' %}
-                            <span class="badge bg-success ms-1">Class Rep</span>
-                        {% else %}
-                            <span class="badge badge-accent ms-1">Teacher</span>
-                        {% endif %}
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                        <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">Profile</a></li>
-                        {% if user.role == 'ADMIN' %}
-                        <li><a class="dropdown-item" href="{% url 'academics:teacher_create' %}">Create Teacher</a></li>
-                        <li><a class="dropdown-item" href="{% url 'accounts:admin_create' %}">Create Admin</a></li>
-                        <li><a class="dropdown-item" href="{% url 'accounts:class_rep_create' %}">Create Class Rep</a></li>
-                        {% endif %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form method="post" action="{% url 'accounts:logout' %}" class="m-0">
-                                {% csrf_token %}
-                                <button type="submit" class="dropdown-item border-0 bg-transparent w-100 text-start">
-                                    Logout
-                                </button>
-                            </form>
-                        </li>
-                    </ul>
-                </li>
-                {% else %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'accounts:login' %}">Login</a>
-                </li>
-                {% endif %}
-            </ul>
         </div>
+
+        {% if user.is_authenticated %}
+        {# Kept outside collapse so the menu is always reachable and not clipped #}
+        <div class="user-menu ms-lg-2" id="userMenu">
+            <button type="button"
+                    class="user-menu-toggle"
+                    id="userMenuToggle"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    aria-controls="userMenuPanel">
+                <i data-lucide="circle-user-round"></i>
+                <span class="user-menu-name">{{ user.get_username }}</span>
+                {% if user.role == 'ADMIN' %}
+                    <span class="badge bg-primary">Admin</span>
+                {% elif user.role == 'CLASS_REP' %}
+                    <span class="badge bg-success">Class Rep</span>
+                {% else %}
+                    <span class="badge badge-accent">Teacher</span>
+                {% endif %}
+                <i data-lucide="chevron-down" class="user-menu-caret"></i>
+            </button>
+            <div class="user-menu-panel" id="userMenuPanel" role="menu" hidden>
+                <a class="user-menu-item" role="menuitem" href="{% url 'accounts:profile' %}">Profile</a>
+                {% if user.role == 'ADMIN' %}
+                <a class="user-menu-item" role="menuitem" href="{% url 'academics:teacher_create' %}">Create Teacher</a>
+                <a class="user-menu-item" role="menuitem" href="{% url 'accounts:admin_create' %}">Create Admin</a>
+                <a class="user-menu-item" role="menuitem" href="{% url 'academics:class_rep_create' %}">Create Class Rep</a>
+                {% endif %}
+                <div class="user-menu-divider"></div>
+                <form method="post" action="{% url 'accounts:logout' %}" class="m-0" data-logout-form>
+                    {% csrf_token %}
+                    <button type="submit" class="user-menu-item user-menu-item-danger" role="menuitem">
+                        <i data-lucide="log-out" class="icon-sm"></i> Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <a class="nav-link ms-auto" href="{% url 'accounts:login' %}">Login</a>
+        {% endif %}
     </div>
 </nav>

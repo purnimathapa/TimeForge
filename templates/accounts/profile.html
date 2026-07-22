@@ -37,6 +37,14 @@
                             </tr>
                         </tbody>
                     </table>
+                    <div class="d-flex justify-content-end gap-2 mt-3 pt-3" style="border-top: 1px solid var(--tf-border-soft);">
+                        <form method="post" action="{% url 'accounts:logout' %}" class="m-0" data-logout-form>
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i data-lucide="log-out" class="icon-sm"></i> Logout
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

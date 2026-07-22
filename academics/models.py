@@ -57,6 +57,25 @@ class TeacherProfile(models.Model):
     max_hours_per_week = models.PositiveIntegerField(default=20)
     is_active = models.BooleanField(default=True)
 
+    EMPLOYEE_ID_PREFIX = 'EMP-'
+
+    @classmethod
+    def generate_employee_id(cls):
+        """Return the next unused employee ID (EMP-0001, EMP-0002, …)."""
+        prefix = cls.EMPLOYEE_ID_PREFIX
+        max_n = 0
+        for eid in cls.objects.filter(employee_id__startswith=prefix).values_list('employee_id', flat=True):
+            suffix = eid[len(prefix):]
+            if suffix.isdigit():
+                max_n = max(max_n, int(suffix))
+
+        for _ in range(1000):
+            max_n += 1
+            candidate = f'{prefix}{max_n:04d}'
+            if not cls.objects.filter(employee_id=candidate).exists():
+                return candidate
+        raise RuntimeError('Unable to allocate a unique employee ID.')
+
     @property
     def display_name(self):
         """Human name for the teacher, falling back to the username."""

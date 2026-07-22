@@ -19,6 +19,11 @@ urlpatterns = [
     path('teachers/<int:pk>/edit/', views.TeacherUpdateView.as_view(), name='teacher_update'),
     path('teachers/<int:pk>/delete/', views.TeacherDeleteView.as_view(), name='teacher_delete'),
 
+    path('class-reps/', views.ClassRepListView.as_view(), name='class_rep_list'),
+    path('class-reps/create/', views.ClassRepCreateView.as_view(), name='class_rep_create'),
+    path('class-reps/<int:pk>/edit/', views.ClassRepUpdateView.as_view(), name='class_rep_update'),
+    path('class-reps/<int:pk>/delete/', views.ClassRepDeleteView.as_view(), name='class_rep_delete'),
+
     path('class-sessions/', views.ClassSessionListView.as_view(), name='class_session_list'),
     path('class-sessions/create/', views.ClassSessionCreateView.as_view(), name='class_session_create'),
     path('class-sessions/<int:pk>/edit/', views.ClassSessionUpdateView.as_view(), name='class_session_update'),

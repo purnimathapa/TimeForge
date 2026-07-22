@@ -60,7 +60,7 @@ class ClassRepCreateViewTests(TestCase):
             semester=self.semester,
             department=self.department,
         )
-        self.url = reverse("accounts:class_rep_create")
+        self.url = reverse("academics:class_rep_create")
         self.valid_payload = {
             "username": "classrep1",
             "email": "classrep1@example.com",
@@ -69,6 +69,7 @@ class ClassRepCreateViewTests(TestCase):
             "password1": "ComplexPass123!",
             "password2": "ComplexPass123!",
             "section": self.section.pk,
+            "is_active": True,
         }
 
     def test_admin_can_create_class_rep(self):

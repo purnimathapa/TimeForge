@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Class Representative{% else %}Create Class Representative{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update this class representative’s profile and section.{% else %}Create a login account (Class Rep role) and link it to a section.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'academics:class_rep_list' %}{% endblock %}

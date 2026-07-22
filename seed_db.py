@@ -68,23 +68,107 @@ def run_tests_and_seed():
 
     # 2. Create Departments
     print("Seeding Departments...")
-    cs = Department.objects.create(name="Computer Science", code="CS", description="CS Dept", school=school)
-    math = Department.objects.create(name="Mathematics", code="MATH", description="Math Dept", school=school)
-    phy = Department.objects.create(name="Physics", code="PHY", description="Physics Dept", school=school)
-    eng = Department.objects.create(name="English", code="ENG", description="English Dept", school=school)
-    bio = Department.objects.create(name="Biology", code="BIO", description="Biology Dept", school=school)
+    department_specs = [
+        ("Department of Architecture", "ARCH"),
+        ("Department of Artificial Intelligence", "AI"),
+        ("Department of Chemical Science and Engineering", "CHE"),
+        ("Department of Civil Engineering", "CE"),
+        ("Department of Computer Science and Engineering", "CSE"),
+        ("Department of Electrical and Electronics Engineering", "EEE"),
+        ("Department of Environmental Engineering", "ENV"),
+        ("Department of Geomatics Engineering", "GE"),
+        ("Department of Health Informatics", "HI"),
+        ("Department of Mechanical Engineering", "ME"),
+    ]
+    departments = {
+        code: Department.objects.create(
+            name=name,
+            code=code,
+            description=name,
+            school=school,
+        )
+        for name, code in department_specs
+    }
+    arch = departments["ARCH"]
+    ai = departments["AI"]
+    che = departments["CHE"]
+    ce = departments["CE"]
+    cse = departments["CSE"]
+    eee = departments["EEE"]
+    env = departments["ENV"]
+    ge = departments["GE"]
+    hi = departments["HI"]
+    me = departments["ME"]
 
     # 3. Create Rooms
     print("Seeding Rooms...")
-    r1 = Room.objects.create(name="Lecture Hall A", code="LHA", capacity=100, room_type=Room.RoomType.LECTURE, department=cs, school=school)
-    r2 = Room.objects.create(name="CS Lab 1", code="CSL1", capacity=30, room_type=Room.RoomType.COMPUTER_LAB, department=cs, school=school)
-    r3 = Room.objects.create(name="Math Seminar Room", code="MSR", capacity=20, room_type=Room.RoomType.SEMINAR, department=math, school=school)
-    r4 = Room.objects.create(name="Physics Lab A", code="PHYL", capacity=25, room_type=Room.RoomType.LAB, department=phy, school=school)
-    r5 = Room.objects.create(name="General Lecture Hall B", code="LHB", capacity=150, room_type=Room.RoomType.LECTURE, school=school)
-    
+    lecture = Room.RoomType.LECTURE
+    lab = Room.RoomType.LAB
+    seminar = Room.RoomType.SEMINAR
+    computer_lab = Room.RoomType.COMPUTER_LAB
+
+    # name, code, building, floor, capacity, room_type, department
+    # Block 9: floors 3/4 → CSE, floor 2 → Geomatics; LAB_305 → CSE (block 9).
+    room_specs = [
+        ("9-302", "9-302", "9", "3", 60, computer_lab, cse),
+        ("9-304", "9-304", "9", "3", 60, lecture, cse),
+        ("9-310", "9-310", "9", "3", 60, lecture, cse),
+        ("9-402", "9-402", "9", "4", 60, lecture, cse),
+        ("9-403", "9-403", "9", "4", 60, lecture, cse),
+        ("9-404", "9-404", "9", "4", 60, lecture, cse),
+        ("LAB_305", "LAB_305", "9", "3", 30, lab, cse),
+        ("9-301", "9-301", "9", "3", 60, seminar, cse),  # Graduate Room
+        ("9-202", "9-202", "9", "2", 60, lecture, ge),
+        ("9-203", "9-203", "9", "2", 60, lecture, ge),
+        ("9-203A", "9-203A", "9", "2", 60, lecture, ge),
+        ("9-201", "9-201", "9", "2", 60, lab, ge),  # Simulation Lab
+        ("9-Active_Learning_LAB", "9-AL-LAB", "9", "", 30, computer_lab, cse),
+        ("10-103", "10-103", "10", "1", 60, lecture, arch),
+        ("10-106", "10-106", "10", "1", 60, lecture, arch),
+        ("10-202", "10-202", "10", "2", 30, lecture, arch),
+        ("10-102", "10-102", "10", "1", 60, lecture, arch),
+        ("10-201", "10-201", "10", "2", 60, lecture, arch),
+        ("10-107", "10-107", "10", "1", 60, lecture, arch),
+        ("Archi Block (Shed)", "ARCHI-SHED", "Archi Block", "", 60, lab, arch),
+        ("6-208", "6-208", "6", "2", 60, lecture, eee),
+        ("6-202", "6-202", "6", "2", 60, lecture, eee),
+        ("6-203", "6-203", "6", "2", 60, lecture, eee),
+        ("6-209", "6-209", "6", "2", 60, lecture, eee),
+        ("6-S3", "6-S3", "6", "", 60, seminar, eee),
+        ("6-S4", "6-S4", "6", "", 30, seminar, eee),
+        ("6-S5", "6-S5", "6", "", 30, seminar, eee),
+        ("6-S6", "6-S6", "6", "", 60, seminar, eee),
+        ("Electrical Lab", "ELEC-LAB", "", "", 60, lab, None),
+        ("8-505", "8-505", "8", "5", 60, lecture, me),
+        ("8-204", "8-204", "8", "2", 60, lecture, me),
+        ("8-502", "8-502", "8", "5", 30, lecture, me),
+        ("8-503", "8-503", "8", "5", 30, lecture, me),
+        ("11-104", "11-104", "11", "1", 60, lecture, ce),
+        ("11-110", "11-110", "11", "1", 60, lecture, ce),
+        ("11-105", "11-105", "11", "1", 60, lecture, ce),
+        ("3-LUPIC Lab", "3-LUPIC-L", "3", "", 30, lab, None),
+        ("3-LUPIC Class Room", "3-LUPIC-C", "3", "", 30, lecture, None),
+        ("TTC", "TTC", "", "", 60, lecture, None),
+        ("Drawing Hall", "DRAW-HALL", "", "", 60, lecture, None),
+        ("Workshop", "WORKSHOP", "", "", 60, lab, None),
+        ("Rinpoche-1", "RINPOCHE-1", "", "", 60, lecture, None),
+        ("Rinpoche-2", "RINPOCHE-2", "", "", 60, lecture, None),
+    ]
+    for name, code, building, floor, capacity, room_type, dept in room_specs:
+        Room.objects.create(
+            name=name,
+            code=code,
+            building=building,
+            floor=floor,
+            capacity=capacity,
+            room_type=room_type,
+            department=dept,
+            school=school,
+        )
+
     # Test SET_NULL on Room when Department is deleted
     test_dept = Department.objects.create(name="Test Dept", code="TEST", school=school)
-    test_room = Room.objects.create(name="Test Room", capacity=50, department=test_dept, school=school)
+    test_room = Room.objects.create(name="Test Room", code="TEST-RM", capacity=50, department=test_dept, school=school)
     test_dept.delete()
     test_room.refresh_from_db()
     if test_room.department is None:
@@ -95,19 +179,53 @@ def run_tests_and_seed():
 
     # 4. Create Subjects
     print("Seeding Subjects...")
-    Subject.objects.create(name="Data Structures", code="CS201", department=cs)
-    Subject.objects.create(name="Algorithms", code="CS301", department=cs)
-    Subject.objects.create(name="Calculus I", code="MATH101", department=math)
-    Subject.objects.create(name="Quantum Mechanics", code="PHY301", department=phy)
-    Subject.objects.create(name="Technical Writing", code="ENG201", department=eng)
+    Subject.objects.create(name="Data Structures", code="CS201", department=cse)
+    Subject.objects.create(name="Algorithms", code="CS301", department=cse)
+    Subject.objects.create(name="Machine Learning", code="AI101", department=ai)
+    Subject.objects.create(name="Reaction Engineering", code="CHE301", department=che)
+    Subject.objects.create(name="Architectural Design", code="ARCH201", department=arch)
 
-    # 5. Create Sections
+    # 5. Create Sections (bachelor's programs per department)
     print("Seeding Sections...")
-    Section.objects.create(name="CS Batch 2026 A", year=1, section_label="A", student_count=60, department=cs, semester=s1)
-    Section.objects.create(name="CS Batch 2026 B", year=1, section_label="B", student_count=60, department=cs, semester=s1)
-    Section.objects.create(name="Math Batch 2026", year=1, section_label="A", student_count=40, department=math, semester=s1)
-    Section.objects.create(name="Physics Batch 2025", year=2, section_label="A", student_count=30, department=phy, semester=s1)
-    Section.objects.create(name="Bio Batch 2026", year=1, section_label="A", student_count=50, department=bio, semester=s1)
+    section_specs = [
+        # Computer Science and Engineering
+        ("BE in Computer Engineering", cse),
+        ("Bachelor of Information Technology (BIT)", cse),
+        ("Bachelor of Information Technology (BIT) – Double Degree", cse),
+        ("BSc in Computer Science", cse),
+        ("B.Tech in Cybersecurity", cse),
+        # Electrical and Electronics Engineering
+        ("BE in Electrical and Electronics Engineering", eee),
+        # Mechanical Engineering (tracks)
+        ("BE in Mechanical Engineering (Automobile)", me),
+        ("BE in Mechanical Engineering (Design & Manufacturing)", me),
+        ("BE in Mechanical Engineering (Energy Technology)", me),
+        ("BE in Mechanical Engineering (Hydropower)", me),
+        # Geomatics Engineering
+        ("BE in Geomatics Engineering", ge),
+        # Architecture
+        ("Bachelor in Heritage Conservation (BHC)", arch),
+        ("Bachelor of Architecture (B.Arch)", arch),
+        # Chemical Science and Engineering
+        ("BE in Chemical Engineering", che),
+        # Civil Engineering
+        ("BE in Civil Engineering", ce),
+        ("BE in Mining Engineering", ce),
+        # Artificial Intelligence
+        ("Bachelor of Technology (B.Tech) in Artificial Intelligence", ai),
+        # Environmental Engineering
+        ("BE in Environmental Engineering", env),
+        # Health Informatics: no bachelor's program listed
+    ]
+    for program_name, dept in section_specs:
+        Section.objects.create(
+            name=program_name,
+            year=1,
+            section_label="A",
+            student_count=40,
+            department=dept,
+            semester=s1,
+        )
 
     # 6. Create TeacherProfiles
     print("Seeding Teacher Profiles...")
@@ -117,22 +235,26 @@ def run_tests_and_seed():
         teacher_user.school = school
         teacher_user.save()
         
-    t1 = TeacherProfile.objects.create(user=teacher_user, employee_id="EMP001", title="Dr.", department=cs)
+    t1 = TeacherProfile.objects.create(user=teacher_user, employee_id="EMP001", title="Dr.", department=cse)
     
     # Add a few more users and teacher profiles
+    teacher_depts = [cse, ce, me, eee, ai, hi, ge, env]
     for i in range(2, 6):
         u, _ = User.objects.get_or_create(username=f'teacher{i}', defaults={'email':f'teacher{i}@example.com', 'role':'TEACHER', 'school': school})
         u.set_password('teacherpass')
         u.school = school
         u.save()
-        dept = [cs, math, phy, eng][(i-2) % 4]
+        dept = teacher_depts[(i - 2) % len(teacher_depts)]
         TeacherProfile.objects.create(user=u, employee_id=f"EMP00{i}", title="Prof.", department=dept)
         
     # 7. Create ClassSessions
     print("Seeding ClassSessions...")
-    ClassSession.objects.create(subject=Subject.objects.get(code="CS201"), teacher=t1, section=Section.objects.get(name="CS Batch 2026 A"), periods_per_week=3)
-    ClassSession.objects.create(subject=Subject.objects.get(code="CS301"), teacher=t1, section=Section.objects.get(name="CS Batch 2026 B"), periods_per_week=4)
-    ClassSession.objects.create(subject=Subject.objects.get(code="MATH101"), teacher=TeacherProfile.objects.get(employee_id="EMP002"), section=Section.objects.get(name="Math Batch 2026"), periods_per_week=3)
+    be_ce = Section.objects.get(name="BE in Computer Engineering", semester=s1)
+    bit = Section.objects.get(name="Bachelor of Information Technology (BIT)", semester=s1)
+    btech_ai = Section.objects.get(name="Bachelor of Technology (B.Tech) in Artificial Intelligence", semester=s1)
+    ClassSession.objects.create(subject=Subject.objects.get(code="CS201"), teacher=t1, section=be_ce, periods_per_week=3)
+    ClassSession.objects.create(subject=Subject.objects.get(code="CS301"), teacher=t1, section=bit, periods_per_week=4)
+    ClassSession.objects.create(subject=Subject.objects.get(code="AI101"), teacher=TeacherProfile.objects.get(employee_id="EMP002"), section=btech_ai, periods_per_week=3)
 
     print("Seed complete! 5+ rows generated for each model.")
 

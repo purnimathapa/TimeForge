@@ -58,4 +58,56 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     });
+
+    // Confirm before logging out (sidebar + settings; optional elsewhere)
+    document.querySelectorAll("[data-logout-form]").forEach(function (form) {
+        form.addEventListener("submit", function (event) {
+            if (!window.confirm("Are you sure you want to log out?")) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    // Top-right user menu (custom toggle; independent of Bootstrap dropdown)
+    const userMenu = document.getElementById("userMenu");
+    const userMenuToggle = document.getElementById("userMenuToggle");
+    const userMenuPanel = document.getElementById("userMenuPanel");
+
+    function closeUserMenu() {
+        if (!userMenu || !userMenuToggle || !userMenuPanel) return;
+        userMenu.classList.remove("is-open");
+        userMenuPanel.hidden = true;
+        userMenuToggle.setAttribute("aria-expanded", "false");
+    }
+
+    function openUserMenu() {
+        if (!userMenu || !userMenuToggle || !userMenuPanel) return;
+        userMenu.classList.add("is-open");
+        userMenuPanel.hidden = false;
+        userMenuToggle.setAttribute("aria-expanded", "true");
+    }
+
+    if (userMenu && userMenuToggle && userMenuPanel) {
+        userMenuToggle.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (userMenuPanel.hidden) {
+                openUserMenu();
+            } else {
+                closeUserMenu();
+            }
+        });
+
+        document.addEventListener("click", function (event) {
+            if (!userMenu.contains(event.target)) {
+                closeUserMenu();
+            }
+        });
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                closeUserMenu();
+            }
+        });
+    }
 });

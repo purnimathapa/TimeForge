@@ -97,6 +97,18 @@ class AcademicsModelTests(TestCase):
         self.assertIn("Dr.", str(teacher))
         self.assertNotIn("T123", str(teacher))
 
+    def test_generate_employee_id_sequences(self):
+        self.assertEqual(TeacherProfile.generate_employee_id(), "EMP-0001")
+        TeacherProfile.objects.create(user=self.user, employee_id="EMP-0001")
+        other = User.objects.create_user(
+            username="teacher2",
+            password="password",
+            role=User.RoleChoices.TEACHER,
+        )
+        self.assertEqual(TeacherProfile.generate_employee_id(), "EMP-0002")
+        TeacherProfile.objects.create(user=other, employee_id="EMP-0007")
+        self.assertEqual(TeacherProfile.generate_employee_id(), "EMP-0008")
+
 
 class ClassRepProfileTests(TestCase):
     def setUp(self):

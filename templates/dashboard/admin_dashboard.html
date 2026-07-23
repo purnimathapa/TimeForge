@@ -13,9 +13,9 @@
             <h1 class="page-title h2 mb-1">Good day, {{ user.get_full_name|default:user.get_username }}</h1>
             <p class="text-muted mb-0">
                 <i data-lucide="calendar" class="icon-sm"></i> {% now "l, F j, Y" %}
-                {% if active_semester %}
+                {% if active_session %}
                     <span class="divider-dot">·</span>
-                    <i data-lucide="graduation-cap" class="icon-sm"></i> {{ active_semester.name }}
+                    <i data-lucide="graduation-cap" class="icon-sm"></i> {{ active_session.name }}
                 {% endif %}
             </p>
         </div>
@@ -70,10 +70,10 @@
             </a>
         </div>
         <div class="col">
-            <a href="{% url 'academics:section_list' %}" class="card tf-card shadow-sm h-100 text-decoration-none">
+            <a href="{% url 'academics:course_list' %}" class="card tf-card shadow-sm h-100 text-decoration-none">
                 <div class="card-body d-flex align-items-center gap-3">
                     <span class="icon-chip"><i data-lucide="users"></i></span>
-                    <div><div class="metric-value">{{ section_count }}</div><div class="metric-label mt-1">Sections</div></div>
+                    <div><div class="metric-value">{{ course_count }}</div><div class="metric-label mt-1">Courses</div></div>
                 </div>
             </a>
         </div>
@@ -100,7 +100,7 @@
                         <span class="text-muted fw-normal">· {{ today_weekday }}</span>
                     </span>
                     {% if has_timetable %}
-                    <a href="{% url 'timetable:section_view' %}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{% url 'timetable:course_level_view' %}" class="btn btn-sm btn-outline-secondary">
                         Open timetable <i data-lucide="arrow-right" class="icon-sm"></i>
                     </a>
                     {% endif %}
@@ -121,7 +121,7 @@
                                 <div class="text-muted small d-flex flex-wrap gap-3 mt-1">
                                     <span><i data-lucide="user" class="icon-sm"></i> {{ slot.teacher.display_name|default:"TBA" }}</span>
                                     <span><i data-lucide="door-open" class="icon-sm"></i> {{ slot.room.name }}</span>
-                                    <span><i data-lucide="users" class="icon-sm"></i> {{ slot.class_session.section.name }}</span>
+                                    <span><i data-lucide="users" class="icon-sm"></i> {{ slot.class_session.course_level }}</span>
                                 </div>
                             </div>
                         </div>
@@ -173,10 +173,10 @@
                     <i data-lucide="activity" style="color: var(--tf-accent);"></i> Operations
                 </div>
                 <div class="card-body">
-                    {% if not active_semester %}
+                    {% if not active_session %}
                     <div class="alert alert-warning d-flex align-items-start gap-2 mb-3">
                         <i data-lucide="triangle-alert" class="icon-sm mt-1"></i>
-                        <div><strong>No active semester.</strong> Set one to begin scheduling.</div>
+                        <div><strong>No active session.</strong> Set one to begin scheduling.</div>
                     </div>
                     {% endif %}
 
@@ -213,7 +213,7 @@
                         <div>
                             <div class="metric-label">Published timetable</div>
                             <div class="fw-semibold">
-                                {% if published_timetable %}v{{ published_timetable.version }} · {{ active_semester.name }}{% else %}None yet{% endif %}
+                                {% if published_timetable %}v{{ published_timetable.version }} · {{ active_session.name }}{% else %}None yet{% endif %}
                             </div>
                         </div>
                         <a href="{% url 'timetable:teacher_view' %}" class="btn btn-sm btn-outline-secondary">Open</a>

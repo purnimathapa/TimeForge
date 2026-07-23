@@ -4,7 +4,7 @@ timetable/models.py
 Timetable and TimetableSlot models — the persistence layer for engine results.
 
 Design notes:
-- Timetable is a versioned header. Each generation for a semester creates a new
+- Timetable is a versioned header. Each generation for a session creates a new
   row (version 1, 2, 3…). Old rows are set to ARCHIVED status, so audit history
   is preserved without extra infrastructure.
 - TimetableSlot stores one (class_session, timeslot, room) placement. The teacher
@@ -21,7 +21,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 from datetime import timedelta
-from core.models import Room, Semester
+from core.models import Room, Session
 from academics.models import ClassSession, TeacherProfile
 from scheduling.models import TimeSlot
 
@@ -32,12 +32,12 @@ class Timetable(models.Model):
         PUBLISHED = 'PUBLISHED', 'Published'
         ARCHIVED  = 'ARCHIVED',  'Archived'
 
-    semester     = models.ForeignKey(
-        Semester, on_delete=models.PROTECT, related_name='timetables'
+    session      = models.ForeignKey(
+        Session, on_delete=models.PROTECT, related_name='timetables'
     )
     version      = models.PositiveIntegerField(
         default=1,
-        help_text="Auto-incremented per semester. Version 1 is the first generation."
+        help_text="Auto-incremented per session. Version 1 is the first generation."
     )
     status       = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
@@ -59,21 +59,20 @@ class Timetable(models.Model):
 
     class Meta:
         ordering = ['-version']
-        # A timetable version is unique per semester
-        unique_together = [('semester', 'version')]
+        # A timetable version is unique per session
+        unique_together = [('session', 'version')]
         verbose_name = 'Timetable'
         verbose_name_plural = 'Timetables'
 
     def save(self, *args, **kwargs):
         """Auto-assign version number if this is a new (unsaved) instance."""
         if not self.pk:
-            # Count existing timetables for this semester to get next version
-            existing_count = Timetable.objects.filter(semester=self.semester).count()
+            existing_count = Timetable.objects.filter(session=self.session).count()
             self.version = existing_count + 1
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.semester.name} · v{self.version} ({self.get_status_display()})"
+        return f"{self.session.name} · v{self.version} ({self.get_status_display()})"
 
     @property
     def slot_count(self):

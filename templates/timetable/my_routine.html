@@ -38,11 +38,11 @@
     <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
             <h1 class="h4 mb-1">My Routine</h1>
-            {% if semester %}
-                <p class="text-muted small mb-0">{{ semester.name }}{% if timetable %} · v{{ timetable.version }}{% endif %}</p>
+            {% if session %}
+                <p class="text-muted small mb-0">{{ session.name }}{% if timetable %} · v{{ timetable.version }}{% endif %}</p>
             {% endif %}
-            {% if routine_role == 'CLASS_REP' and section %}
-                <p class="text-muted small mb-0"><i class="bi bi-people me-1"></i>{{ section.name }}</p>
+            {% if routine_role == 'CLASS_REP' and course_level %}
+                <p class="text-muted small mb-0"><i class="bi bi-people me-1"></i>{{ course_level.display_name }}</p>
             {% endif %}
         </div>
         <span class="badge text-bg-light border text-muted routine-slot-pill">
@@ -50,12 +50,12 @@
         </span>
     </div>
 
-    {% if not semester or not timetable %}
+    {% if not session or not timetable %}
     <div class="card shadow-sm border-0 text-center py-5 px-3">
         <i class="bi bi-calendar-x text-muted display-4 mb-3"></i>
         <h2 class="h5 text-muted">No published timetable yet</h2>
         <p class="text-muted small mb-0 mx-auto" style="max-width: 320px;">
-            Once the administration publishes a timetable for this semester, your routine will appear here.
+            Once the administration publishes a timetable for this session, your routine will appear here.
         </p>
     </div>
 
@@ -67,7 +67,7 @@
             {% if routine_role == 'TEACHER' %}
                 You have no assigned sessions in the published timetable.
             {% else %}
-                Your section has no sessions in the published timetable.
+                Your course level has no class sessions in the published timetable.
             {% endif %}
         </p>
     </div>
@@ -96,7 +96,7 @@
                 {% if routine_role == 'CLASS_REP' and next_slot.teacher %}
                     <span><i class="bi bi-person me-1 text-primary"></i>{{ next_slot.teacher.user.get_full_name }}</span>
                 {% elif routine_role == 'TEACHER' %}
-                    <span><i class="bi bi-people me-1 text-primary"></i>{{ next_slot.class_session.section.name }}</span>
+                    <span><i class="bi bi-people me-1 text-primary"></i>{{ next_slot.class_session.course_level }}</span>
                 {% endif %}
             </div>
         </div>
@@ -119,7 +119,7 @@
                     <div class="text-muted small text-truncate">
                         {{ slot.room.name }}
                         {% if routine_role == 'CLASS_REP' and slot.teacher %} · {{ slot.teacher.user.get_full_name }}{% endif %}
-                        {% if routine_role == 'TEACHER' %} · {{ slot.class_session.section.name }}{% endif %}
+                        {% if routine_role == 'TEACHER' %} · {{ slot.class_session.course_level }}{% endif %}
                     </div>
                 </div>
                 <span class="badge text-bg-light border text-muted ms-2 flex-shrink-0">
@@ -151,7 +151,7 @@
                                     {% if routine_role == 'CLASS_REP' and slot.teacher %}
                                         <div class="activity-detail small">{{ slot.teacher.user.get_full_name }}</div>
                                     {% elif routine_role == 'TEACHER' %}
-                                        <div class="activity-detail small">{{ slot.class_session.section.name }}</div>
+                                        <div class="activity-detail small">{{ slot.class_session.course_level }}</div>
                                     {% endif %}
                                 </div>
                             </div>
@@ -196,7 +196,7 @@
                                         {% if routine_role == 'CLASS_REP' and slot.teacher %}
                                             <div class="activity-detail">{{ slot.teacher.user.get_full_name|truncatechars:18 }}</div>
                                         {% elif routine_role == 'TEACHER' %}
-                                            <div class="activity-detail">{{ slot.class_session.section.name }}</div>
+                                            <div class="activity-detail">{{ slot.class_session.course_level }}</div>
                                         {% endif %}
                                     </div>
                                     {% endfor %}

@@ -1,17 +1,364 @@
 import os
+import datetime
+import random
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from pathlib import Path
+
 import django
+from openpyxl import load_workbook
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timeforge.settings.base")
 django.setup()
 
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from core.models import Department, Room, School, Semester
-from academics.models import Subject, Section, TeacherProfile, ClassSession
-from scheduling.models import TeacherAvailability, TimeSlot
-import datetime
+from core.models import Department, Room, School, Session
+from academics.models import Subject, Course, CourseLevel, TeacherProfile, ClassSession
+from scheduling.models import TeacherAvailability
 
 User = get_user_model()
+
+BASE_DIR = Path(__file__).resolve().parent
+SUBJECTS_XLSX = BASE_DIR / "data" / "KU_SOE_Master_Database.xlsx"
+SEMESTERS_XLSX = BASE_DIR / "data" / "semesters.xlsx"
+TEACHERS_TXT = BASE_DIR / "data" / "teachers.txt"
+
+# Spreadsheet program label → Course.code
+PROGRAM_TO_COURSE_CODE = {
+    "BE Computer Engineering": "BE-CE",
+    "BSc Computer Science": "BSC-CS",
+    "Artificial Intelligence": "BTECH-AI",
+    "Geomatics Engineering": "BE-GE",
+    "Chemical Engineering": "BE-CHE",
+    "Civil Engineering": "BE-CIV",
+    "Communication Engineering": "BE-COMM",
+}
+
+# Excel department label → seeded Department.code
+EXCEL_DEPT_TO_CODE = {
+    "Computer Science & Engineering": "CSE",
+    "Civil Engineering": "CE",
+    "Electrical & Electronics Engineering": "EEE",
+    "Chemical Engineering": "CHE",
+    "Geomatics Engineering": "GE",
+}
+
+
+def _parse_credit(value, default=Decimal("3.00")):
+    if value is None or str(value).strip() in ("", "None"):
+        return default
+    try:
+        return Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return default
+
+
+def _periods_per_week_from_credits(credit):
+    """
+    1 credit = 16 contact hours / semester; with ~1.5h periods that yields
+    periods_per_week = credits * 2/3 (so 3 credits → 2 periods/week).
+    """
+    credit = _parse_credit(credit)
+    periods = (credit * Decimal("2") / Decimal("3")).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    return max(1, int(periods))
+
+
+def _absolute_semester(year, semester):
+    """year 3, semester 1 → absolute semester 5."""
+    return (int(year) - 1) * 2 + int(semester)
+
+
+def _resolve_excel_departments(raw, departments_by_code):
+    """Split comma-separated Excel dept labels into Department instances."""
+    if not raw:
+        return []
+    resolved = []
+    seen = set()
+    for part in str(raw).split(","):
+        label = part.strip()
+        if not label:
+            continue
+        code = EXCEL_DEPT_TO_CODE.get(label)
+        if code is None:
+            raise ValueError(f"Unmapped Excel department label: {label!r}")
+        if code in seen:
+            continue
+        seen.add(code)
+        resolved.append(departments_by_code[code])
+    return resolved
+
+
+def seed_subjects_from_excel(departments_by_code):
+    """Load KU SOE subjects from the scraped workbook."""
+    if not SUBJECTS_XLSX.is_file():
+        raise FileNotFoundError(
+            f"Missing subjects workbook at {SUBJECTS_XLSX}. "
+            "Place KU_SOE_Master_Database.xlsx under data/."
+        )
+
+    wb = load_workbook(SUBJECTS_XLSX, read_only=True, data_only=True)
+    try:
+        rows = list(wb.active.iter_rows(values_only=True))
+    finally:
+        wb.close()
+
+    created = 0
+    skipped = 0
+    for row in rows:
+        if not row or not row[0]:
+            skipped += 1
+            continue
+        code = str(row[0]).strip()
+        name = str(row[1] or "").strip()
+        if not name:
+            skipped += 1
+            continue
+        credit = _parse_credit(row[2] if len(row) > 2 else None)
+        depts = _resolve_excel_departments(row[3] if len(row) > 3 else None, departments_by_code)
+        if not depts:
+            skipped += 1
+            print(f"  SKIP {code}: no resolvable departments ({row[3]!r})")
+            continue
+
+        subject = Subject.objects.create(
+            name=name[:150],
+            code=code[:20],
+            credit_hours=credit,
+            lecture_hours_per_week=max(1, int(credit)),
+            lab_hours_per_week=0,
+            is_active=True,
+        )
+        subject.departments.set(depts)
+        created += 1
+
+    print(f"Subjects seeded from Excel: {created} created, {skipped} skipped.")
+    return created
+
+
+def _parse_teacher_line(line):
+    """
+    Return (title, first_name, last_name, is_visiting) from a roster line.
+
+    Rules:
+      Prof. Dr. … → title Prof. Dr.
+      Dr. …       → title Dr.
+      Mr./Ms. …   → title Lecturer
+      no salutation → title blank, visiting faculty
+    """
+    raw = " ".join(str(line).split())
+    if not raw:
+        return None
+
+    title = ""
+    is_visiting = False
+    name = raw
+
+    if raw.startswith("Prof. Dr. "):
+        title = TeacherProfile.Title.PROF_DR
+        name = raw[len("Prof. Dr. "):]
+    elif raw.startswith("Prof.Dr. "):
+        title = TeacherProfile.Title.PROF_DR
+        name = raw[len("Prof.Dr. "):]
+    elif raw.startswith("Dr. "):
+        title = TeacherProfile.Title.DR
+        name = raw[len("Dr. "):]
+    elif raw.startswith("Mr. "):
+        title = TeacherProfile.Title.LECTURER
+        name = raw[len("Mr. "):]
+    elif raw.startswith("Ms. "):
+        title = TeacherProfile.Title.LECTURER
+        name = raw[len("Ms. "):]
+    else:
+        # No salutation → no title, visiting faculty
+        title = ""
+        is_visiting = True
+        name = raw
+
+    name = name.strip()
+    if not name:
+        return None
+
+    parts = name.split()
+    if len(parts) == 1:
+        first_name, last_name = parts[0], ""
+    else:
+        first_name, last_name = parts[0], " ".join(parts[1:])
+
+    return title, first_name, last_name, is_visiting
+
+
+def _teacher_username(first_name, last_name, used):
+    """Build a unique username from the teacher's name."""
+    import re
+
+    base = re.sub(r"[^a-z0-9]+", "", f"{first_name}{last_name}".lower())
+    if not base:
+        base = "teacher"
+    candidate = base
+    n = 2
+    while candidate in used or User.objects.filter(username=candidate).exists():
+        candidate = f"{base}{n}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
+def seed_teachers_from_file(school):
+    """Seed teacher accounts + profiles from data/teachers.txt."""
+    if not TEACHERS_TXT.is_file():
+        raise FileNotFoundError(
+            f"Missing teachers roster at {TEACHERS_TXT}. "
+            "Place teachers.txt under data/."
+        )
+
+    # Remove prior teacher accounts so re-seeds don't leave orphans
+    User.objects.filter(role=User.RoleChoices.TEACHER).delete()
+
+    lines = TEACHERS_TXT.read_text(encoding="utf-8").splitlines()
+    used_usernames = set()
+    profiles = []
+    created = 0
+
+    for line in lines:
+        parsed = _parse_teacher_line(line)
+        if parsed is None:
+            continue
+        title, first_name, last_name, is_visiting = parsed
+        username = _teacher_username(first_name, last_name, used_usernames)
+        email_local = username
+        email = f"{email_local}@gmail.com"
+
+        user, created_user = User.objects.get_or_create(
+            username=username,
+            defaults={
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": User.RoleChoices.TEACHER,
+                "school": school,
+            },
+        )
+        user.email = email
+        user.first_name = first_name
+        user.last_name = last_name
+        user.role = User.RoleChoices.TEACHER
+        user.school = school
+        user.set_password("teacherpass")
+        user.save()
+
+        # Drop prior profile if re-seeding left an orphan link
+        TeacherProfile.objects.filter(user=user).delete()
+        profile = TeacherProfile.objects.create(
+            user=user,
+            employee_id=TeacherProfile.generate_employee_id(),
+            title=title,
+            is_visiting=is_visiting,
+            is_active=True,
+        )
+        profiles.append(profile)
+        created += 1
+        created_flag = "new" if created_user else "updated"
+        print(f"  {profile.employee_id} {profile.ranked_name} ({created_flag}, visiting={is_visiting})")
+
+    print(f"Teachers seeded from file: {created} created.")
+    return profiles
+
+
+def seed_class_sessions_from_semesters(session, courses_by_code, teachers):
+    """
+    Create ClassSessions for Fall (odd absolute semesters 1/3/5/7) from
+    data/semesters.xlsx. Skips rows whose Subject is not already seeded.
+    """
+    if not SEMESTERS_XLSX.is_file():
+        raise FileNotFoundError(
+            f"Missing semester workbook at {SEMESTERS_XLSX}. "
+            "Place semesters.xlsx under data/."
+        )
+    if not teachers:
+        raise ValueError("Need at least one teacher to assign class sessions.")
+
+    wb = load_workbook(SEMESTERS_XLSX, read_only=True, data_only=True)
+    try:
+        rows = list(wb.active.iter_rows(min_row=2, values_only=True))
+    finally:
+        wb.close()
+
+    subjects_by_code = {s.code: s for s in Subject.objects.all()}
+    created = 0
+    skipped_even = 0
+    skipped_missing_subject = 0
+    skipped_unknown_program = 0
+    skipped_bad_row = 0
+    active_levels = set()  # CourseLevel ids that receive sessions
+
+    for row in rows:
+        if not row or not row[0]:
+            skipped_bad_row += 1
+            continue
+        code = str(row[0]).strip()
+        if not code or code == "None":
+            skipped_bad_row += 1
+            continue
+
+        credits = row[2] if len(row) > 2 else None
+        program = str(row[4] or "").strip() if len(row) > 4 else ""
+        year = row[5] if len(row) > 5 else None
+        sem_in_year = row[6] if len(row) > 6 else None
+        if year is None or sem_in_year is None or not program:
+            skipped_bad_row += 1
+            continue
+
+        try:
+            abs_sem = _absolute_semester(year, sem_in_year)
+        except (TypeError, ValueError):
+            skipped_bad_row += 1
+            continue
+
+        # Fall 2026 → odd absolute semesters only
+        if abs_sem % 2 == 0:
+            skipped_even += 1
+            continue
+
+        course_code = PROGRAM_TO_COURSE_CODE.get(program)
+        if course_code is None:
+            skipped_unknown_program += 1
+            print(f"  SKIP {code}: unknown program {program!r}")
+            continue
+
+        course = courses_by_code.get(course_code)
+        if course is None:
+            skipped_unknown_program += 1
+            print(f"  SKIP {code}: course {course_code} not seeded")
+            continue
+
+        subject = subjects_by_code.get(code)
+        if subject is None:
+            skipped_missing_subject += 1
+            continue
+
+        course_level = course.levels.get(level=abs_sem)
+        active_levels.add(course_level.id)
+        ClassSession.objects.create(
+            session=session,
+            subject=subject,
+            teacher=random.choice(teachers),
+            course_level=course_level,
+            periods_per_week=_periods_per_week_from_credits(credits),
+        )
+        created += 1
+
+    # Mark odd levels that have sessions with a default cohort size
+    CourseLevel.objects.filter(id__in=active_levels).update(student_count=60)
+
+    print(
+        f"ClassSessions seeded: {created} created "
+        f"(skipped even={skipped_even}, missing subject={skipped_missing_subject}, "
+        f"unknown program={skipped_unknown_program}, bad row={skipped_bad_row})."
+    )
+    return created
+
 
 def run_tests_and_seed():
     print("Running Tests and Seeding DB...")
@@ -26,45 +373,36 @@ def run_tests_and_seed():
     Room.objects.all().delete()
     ClassSession.objects.all().delete()
     Subject.objects.all().delete()
-    Section.objects.all().delete()
+    Course.objects.all().delete()
     TeacherAvailability.objects.all().delete()
     TeacherProfile.objects.all().delete()
     Department.objects.all().delete()
-    Semester.objects.all().delete()
+    Session.objects.all().delete()
 
     school, _ = School.objects.get_or_create(
         code='default',
         defaults={'name': 'Default School', 'is_active': True},
     )
     
-    # 1. Create Semesters
-    print("Seeding Semesters...")
-    s1 = Semester.objects.create(
-        name="Fall 2026", code="FA26",
+    # 1. Create the only academic session
+    print("Seeding Sessions...")
+    s1 = Session.objects.create(
+        name="Fall 2026",
         start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 12, 15),
         is_active=True, school=school,
     )
-    s2 = Semester.objects.create(
-        name="Spring 2027", code="SP27",
-        start_date=datetime.date(2027, 1, 15), end_date=datetime.date(2027, 5, 30),
-        is_active=False, school=school,
-    )
-    
-    # Test Semester uniqueness constraint on is_active (scoped per school)
-    s3 = Semester(
-        name="Summer 2027", code="SU27",
-        start_date=datetime.date(2027, 6, 1), end_date=datetime.date(2027, 7, 30),
+
+    # Test Session uniqueness constraint on is_active (scoped per school); not saved
+    s_dup = Session(
+        name="Duplicate Active",
+        start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 12, 15),
         is_active=True, school=school,
     )
     try:
-        s3.clean()
-        print("FAIL: Expected ValidationError for second active semester")
+        s_dup.clean()
+        print("FAIL: Expected ValidationError for second active session")
     except ValidationError as e:
-        print(f"PASS: Validation error raised for second active semester: {e}")
-        
-    Semester.objects.create(name="Fall 2027", code="FA27", start_date=datetime.date(2027, 8, 1), end_date=datetime.date(2027, 12, 15), is_active=False, school=school)
-    Semester.objects.create(name="Spring 2028", code="SP28", start_date=datetime.date(2028, 1, 15), end_date=datetime.date(2028, 5, 30), is_active=False, school=school)
-    Semester.objects.create(name="Summer 2028", code="SU28", start_date=datetime.date(2028, 6, 1), end_date=datetime.date(2028, 7, 30), is_active=False, school=school)
+        print(f"PASS: Validation error raised for second active session: {e}")
 
     # 2. Create Departments
     print("Seeding Departments...")
@@ -177,86 +515,67 @@ def run_tests_and_seed():
         print("FAIL: Expected Room department to be NULL.")
     test_room.delete()
 
-    # 4. Create Subjects
+    # 4. Create Subjects from KU SOE scraped workbook
     print("Seeding Subjects...")
-    Subject.objects.create(name="Data Structures", code="CS201", department=cse)
-    Subject.objects.create(name="Algorithms", code="CS301", department=cse)
-    Subject.objects.create(name="Machine Learning", code="AI101", department=ai)
-    Subject.objects.create(name="Reaction Engineering", code="CHE301", department=che)
-    Subject.objects.create(name="Architectural Design", code="ARCH201", department=arch)
+    seed_subjects_from_excel(departments)
 
-    # 5. Create Sections (bachelor's programs per department)
-    print("Seeding Sections...")
-    section_specs = [
+    # 5. Create Courses (bachelor's programs per department); .save() auto-creates levels 1–8
+    print("Seeding Courses...")
+    course_specs = [
         # Computer Science and Engineering
-        ("BE in Computer Engineering", cse),
-        ("Bachelor of Information Technology (BIT)", cse),
-        ("Bachelor of Information Technology (BIT) – Double Degree", cse),
-        ("BSc in Computer Science", cse),
-        ("B.Tech in Cybersecurity", cse),
+        ("BE in Computer Engineering", "BE-CE", cse),
+        ("Bachelor of Information Technology (BIT)", "BIT", cse),
+        ("Bachelor of Information Technology (BIT) – Double Degree", "BIT-DD", cse),
+        ("BSc in Computer Science", "BSC-CS", cse),
+        ("B.Tech in Cybersecurity", "BTECH-CYBER", cse),
         # Electrical and Electronics Engineering
-        ("BE in Electrical and Electronics Engineering", eee),
+        ("BE in Electrical and Electronics Engineering", "BE-EEE", eee),
+        ("BE in Communication Engineering", "BE-COMM", eee),
         # Mechanical Engineering (tracks)
-        ("BE in Mechanical Engineering (Automobile)", me),
-        ("BE in Mechanical Engineering (Design & Manufacturing)", me),
-        ("BE in Mechanical Engineering (Energy Technology)", me),
-        ("BE in Mechanical Engineering (Hydropower)", me),
+        ("BE in Mechanical Engineering (Automobile)", "BE-ME-AUTO", me),
+        ("BE in Mechanical Engineering (Design & Manufacturing)", "BE-ME-DM", me),
+        ("BE in Mechanical Engineering (Energy Technology)", "BE-ME-ET", me),
+        ("BE in Mechanical Engineering (Hydropower)", "BE-ME-HP", me),
         # Geomatics Engineering
-        ("BE in Geomatics Engineering", ge),
+        ("BE in Geomatics Engineering", "BE-GE", ge),
         # Architecture
-        ("Bachelor in Heritage Conservation (BHC)", arch),
-        ("Bachelor of Architecture (B.Arch)", arch),
+        ("Bachelor in Heritage Conservation (BHC)", "BHC", arch),
+        ("Bachelor of Architecture (B.Arch)", "BARCH", arch),
         # Chemical Science and Engineering
-        ("BE in Chemical Engineering", che),
+        ("BE in Chemical Engineering", "BE-CHE", che),
         # Civil Engineering
-        ("BE in Civil Engineering", ce),
-        ("BE in Mining Engineering", ce),
+        ("BE in Civil Engineering", "BE-CIV", ce),
+        ("BE in Mining Engineering", "BE-MIN", ce),
         # Artificial Intelligence
-        ("Bachelor of Technology (B.Tech) in Artificial Intelligence", ai),
+        ("Bachelor of Technology (B.Tech) in Artificial Intelligence", "BTECH-AI", ai),
         # Environmental Engineering
-        ("BE in Environmental Engineering", env),
+        ("BE in Environmental Engineering", "BE-ENV", env),
         # Health Informatics: no bachelor's program listed
     ]
-    for program_name, dept in section_specs:
-        Section.objects.create(
+    courses_by_code = {}
+    for program_name, code, dept in course_specs:
+        course = Course.objects.create(
             name=program_name,
-            year=1,
-            section_label="A",
-            student_count=40,
+            code=code,
             department=dept,
-            semester=s1,
+            is_active=True,
         )
+        courses_by_code[code] = course
 
-    # 6. Create TeacherProfiles
+    # 6. Create TeacherProfiles from KU roster
     print("Seeding Teacher Profiles...")
-    teacher_user, _ = User.objects.get_or_create(username='teacher1', defaults={'email':'teacher1@example.com', 'role':'TEACHER', 'school': school})
-    if not teacher_user.password:
-        teacher_user.set_password('teacherpass')
-        teacher_user.school = school
-        teacher_user.save()
-        
-    t1 = TeacherProfile.objects.create(user=teacher_user, employee_id="EMP001", title="Dr.", department=cse)
-    
-    # Add a few more users and teacher profiles
-    teacher_depts = [cse, ce, me, eee, ai, hi, ge, env]
-    for i in range(2, 6):
-        u, _ = User.objects.get_or_create(username=f'teacher{i}', defaults={'email':f'teacher{i}@example.com', 'role':'TEACHER', 'school': school})
-        u.set_password('teacherpass')
-        u.school = school
-        u.save()
-        dept = teacher_depts[(i - 2) % len(teacher_depts)]
-        TeacherProfile.objects.create(user=u, employee_id=f"EMP00{i}", title="Prof.", department=dept)
-        
-    # 7. Create ClassSessions
-    print("Seeding ClassSessions...")
-    be_ce = Section.objects.get(name="BE in Computer Engineering", semester=s1)
-    bit = Section.objects.get(name="Bachelor of Information Technology (BIT)", semester=s1)
-    btech_ai = Section.objects.get(name="Bachelor of Technology (B.Tech) in Artificial Intelligence", semester=s1)
-    ClassSession.objects.create(subject=Subject.objects.get(code="CS201"), teacher=t1, section=be_ce, periods_per_week=3)
-    ClassSession.objects.create(subject=Subject.objects.get(code="CS301"), teacher=t1, section=bit, periods_per_week=4)
-    ClassSession.objects.create(subject=Subject.objects.get(code="AI101"), teacher=TeacherProfile.objects.get(employee_id="EMP002"), section=btech_ai, periods_per_week=3)
+    teacher_profiles = seed_teachers_from_file(school)
 
-    print("Seed complete! 5+ rows generated for each model.")
+    # 7. ClassSessions for odd absolute semesters from semesters.xlsx
+    print("Seeding ClassSessions...")
+    random.seed(42)  # stable teacher assignment across re-seeds
+    cs_count = seed_class_sessions_from_semesters(s1, courses_by_code, teacher_profiles)
+
+    print(
+        f"Seed complete! Subjects: {Subject.objects.count()}, "
+        f"Courses: {Course.objects.count()}, Teachers: {TeacherProfile.objects.count()}, "
+        f"ClassSessions: {cs_count}, Sessions: {Session.objects.count()}."
+    )
 
 if __name__ == '__main__':
     run_tests_and_seed()

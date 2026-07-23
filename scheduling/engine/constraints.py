@@ -72,20 +72,20 @@ def teacher_not_double_booked(
     return True
 
 
-def section_not_double_booked(
-    section_id: int,
+def course_level_not_double_booked(
+    course_level_id: int,
     slot_id: int,
     existing_placements: list["Placement"],
     schedule_input: "ScheduleInput",
 ) -> bool:
     """
-    Return True if the section has no other placement in this timeslot.
+    Return True if the course level has no other placement in this timeslot.
     """
     for p in existing_placements:
         if p.timeslot_id != slot_id:
             continue
         activity = schedule_input.activities_by_id.get(p.activity_id)
-        if activity and activity.section_id == section_id:
+        if activity and activity.course_level_id == course_level_id:
             return False
     return True
 
@@ -121,16 +121,16 @@ def room_type_matches(room: "RoomData", required_type: str | None) -> bool:
     return False
 
 
-def room_has_capacity(room: "RoomData", section_id: int, schedule_input: "ScheduleInput") -> bool:
+def room_has_capacity(room: "RoomData", course_level_id: int, schedule_input: "ScheduleInput") -> bool:
     """
-    Return True if the room has enough capacity for the section's student count.
+    Return True if the room has enough capacity for the course level's student count.
 
-    Falls back to True if section or capacity data is missing.
+    Falls back to True if course level or capacity data is missing.
     """
-    section = schedule_input.sections_by_id.get(section_id)
-    if section is None:
+    course_level = schedule_input.course_levels_by_id.get(course_level_id)
+    if course_level is None:
         return True
-    student_count = getattr(section, "student_count", 0)
+    student_count = getattr(course_level, "student_count", 0)
     if student_count == 0:
         return True
     return room.capacity >= student_count
@@ -185,11 +185,11 @@ def is_hard_feasible(
 
     Checks performed (in short-circuit order for performance):
       1. Room not already occupied in this slot
-      2. Section not already in another class in this slot
+      2. Course level not already in another class in this slot
       3. Teacher available (not in unavailable set)
       4. Teacher not already teaching another class in this slot
       5. Room type satisfies activity's requirement
-      6. Room capacity sufficient for section
+      6. Room capacity sufficient for course level
       7. Teacher MAX_DAILY_HOURS constraints (from ConstraintData rows)
     """
     return validate_single_placement(
@@ -232,19 +232,19 @@ def validate_single_placement(
                 f"Room {room.name} is already booked for this period.",
             )
 
-    # 2. Section double-booking
+    # 2. Course level double-booking
     for p in existing_placements:
         if p.timeslot_id != slot_id:
             continue
         other_activity = schedule_input.activities_by_id.get(p.activity_id)
-        if other_activity and other_activity.section_id == activity.section_id:
-            section = schedule_input.sections_by_id.get(activity.section_id)
-            section_name = section.name if section else f"#{activity.section_id}"
+        if other_activity and other_activity.course_level_id == activity.course_level_id:
+            course_level = schedule_input.course_levels_by_id.get(activity.course_level_id)
+            course_level_name = course_level.name if course_level else f"#{activity.course_level_id}"
             return PlacementValidationResult(
                 False,
-                "section",
-                activity.section_id,
-                f"Section {section_name} already has a class in this period.",
+                "course_level",
+                activity.course_level_id,
+                f"Course level {course_level_name} already has a class in this period.",
             )
 
     # 3 & 4. Teacher checks (only if a teacher is assigned)
@@ -308,14 +308,14 @@ def validate_single_placement(
         )
 
     # 6. Room capacity
-    if not room_has_capacity(room, activity.section_id, schedule_input):
-        section = schedule_input.sections_by_id.get(activity.section_id)
-        section_name = section.name if section else f"#{activity.section_id}"
+    if not room_has_capacity(room, activity.course_level_id, schedule_input):
+        course_level = schedule_input.course_levels_by_id.get(activity.course_level_id)
+        course_level_name = course_level.name if course_level else f"#{activity.course_level_id}"
         return PlacementValidationResult(
             False,
             "room",
             room_id,
-            f"Room {room.name} does not have enough capacity for section {section_name}.",
+            f"Room {room.name} does not have enough capacity for course level {course_level_name}.",
         )
 
     return PlacementValidationResult(True)
@@ -342,7 +342,7 @@ def find_hard_violations(
 
     # Index placements by slot for efficient O(n) checks
     slot_to_rooms: dict[int, list[int]] = defaultdict(list)
-    slot_to_sections: dict[int, list[int]] = defaultdict(list)
+    slot_to_course_levels: dict[int, list[int]] = defaultdict(list)
     slot_to_teachers: dict[int, list[int]] = defaultdict(list)
     teacher_day_counts: dict[tuple[int, int], int] = defaultdict(int)
 
@@ -373,12 +373,12 @@ def find_hard_violations(
             )
         slot_to_rooms[p.timeslot_id].append(p.room_id)
 
-        # Section double-booking
-        if activity.section_id in slot_to_sections[p.timeslot_id]:
+        # Course level double-booking
+        if activity.course_level_id in slot_to_course_levels[p.timeslot_id]:
             violations.append(
-                f"HARD VIOLATION: Section {activity.section_id} double-booked in timeslot {p.timeslot_id}"
+                f"HARD VIOLATION: Course level {activity.course_level_id} double-booked in timeslot {p.timeslot_id}"
             )
-        slot_to_sections[p.timeslot_id].append(activity.section_id)
+        slot_to_course_levels[p.timeslot_id].append(activity.course_level_id)
 
         # Teacher availability + double-booking
         if activity.teacher_id is not None:
@@ -447,9 +447,9 @@ def compute_penalty(
     """
     penalty = 0
 
-    # Build day-period lists per teacher and per section for gap detection
+    # Build day-period lists per teacher and per course level for gap detection
     teacher_day_periods: dict[tuple[int, int], list[int]] = defaultdict(list)
-    section_day_periods: dict[tuple[int, int], list[int]] = defaultdict(list)
+    course_level_day_periods: dict[tuple[int, int], list[int]] = defaultdict(list)
     teacher_day_counts: dict[tuple[int, int], int] = defaultdict(int)
 
     for p in placements:
@@ -463,8 +463,8 @@ def compute_penalty(
             teacher_day_periods[key].append(slot.period_number)
             teacher_day_counts[key] += 1
 
-        section_key = (activity.section_id, slot.day_of_week)
-        section_day_periods[section_key].append(slot.period_number)
+        course_level_key = (activity.course_level_id, slot.day_of_week)
+        course_level_day_periods[course_level_key].append(slot.period_number)
 
     # Evaluate soft constraints
     for c in schedule_input.constraints:

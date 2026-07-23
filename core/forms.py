@@ -1,7 +1,6 @@
 from django import forms
 
-from core.models import Department, Room, Semester
-from core.tenant import school_filter
+from core.models import Department, Room, Session
 
 
 class SchoolScopedFormMixin:
@@ -25,17 +24,16 @@ class RoomForm(SchoolScopedFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        qs = Department.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
+            qs = qs.filter(school=self.school)
+        self.fields['department'].queryset = qs.order_by('name')
 
 
-class SemesterForm(SchoolScopedFormMixin, forms.ModelForm):
+class SessionForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
-        model = Semester
-        fields = ['name', 'code', 'start_date', 'end_date', 'is_active']
+        model = Session
+        fields = ['name', 'start_date', 'end_date', 'is_active']
         widgets = {
             'start_date': forms.DateInput(attrs={'type': 'date'}),
             'end_date': forms.DateInput(attrs={'type': 'date'}),

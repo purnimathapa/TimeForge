@@ -39,7 +39,7 @@ from scheduling.engine.data_types import (
     Placement,
     RoomData,
     ScheduleInput,
-    SectionData,
+    CourseLevelData,
     TeacherData,
     TimeSlotData,
 )
@@ -138,9 +138,9 @@ class TestSinglePlacementValidation(unittest.TestCase):
                 TeacherData(1, "Ada Lovelace", 4, frozenset()),
                 TeacherData(2, "Grace Hopper", 4, frozenset()),
             ],
-            sections=[
-                SectionData(1, "CS-A"),
-                SectionData(2, "CS-B"),
+            course_levels=[
+                CourseLevelData(1, "CS-A"),
+                CourseLevelData(2, "CS-B"),
             ],
             activities=[
                 ActivityData(1, "Algorithms", 1, 1, teacher_id=1),
@@ -163,7 +163,7 @@ class TestSinglePlacementValidation(unittest.TestCase):
         self.assertEqual(result.resource_type, "teacher")
         self.assertIn("Ada Lovelace", result.message)
 
-    def test_reports_section_conflict(self):
+    def test_reports_course_level_conflict(self):
         result = validate_single_placement(
             self.schedule_input.activities_by_id[3],
             1,
@@ -173,7 +173,7 @@ class TestSinglePlacementValidation(unittest.TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertEqual(result.resource_type, "section")
+        self.assertEqual(result.resource_type, "course_level")
         self.assertIn("CS-A", result.message)
 
     def test_reports_room_conflict(self):
@@ -229,18 +229,18 @@ class TestTrivialCase(unittest.TestCase):
             ),
         ]
 
-        self.sections = [
-            SectionData(id=1, name="CS-A"),
-            SectionData(id=2, name="CS-B"),
+        self.course_levels = [
+            CourseLevelData(id=1, name="CS-A"),
+            CourseLevelData(id=2, name="CS-B"),
         ]
 
-        # Activity 1: Math for section CS-A, taught by Dr. Alpha, 1 period/week
-        # Activity 2: Physics for section CS-B, taught by Dr. Beta, 1 period/week
+        # Activity 1: Math for course level CS-A, taught by Dr. Alpha, 1 period/week
+        # Activity 2: Physics for course level CS-B, taught by Dr. Beta, 1 period/week
         self.activities = [
             ActivityData(
                 id=1,
                 subject_name="Mathematics",
-                section_id=1,
+                course_level_id=1,
                 periods_per_week=1,
                 teacher_id=1,
                 room_type_required=None,
@@ -248,7 +248,7 @@ class TestTrivialCase(unittest.TestCase):
             ActivityData(
                 id=2,
                 subject_name="Physics",
-                section_id=2,
+                course_level_id=2,
                 periods_per_week=1,
                 teacher_id=2,
                 room_type_required=None,
@@ -259,7 +259,7 @@ class TestTrivialCase(unittest.TestCase):
             timeslots=self.timeslots,
             rooms=self.rooms,
             teachers=self.teachers,
-            sections=self.sections,
+            course_levels=self.course_levels,
             activities=self.activities,
             constraints=[],
         )
@@ -305,7 +305,7 @@ class TestTrivialCase(unittest.TestCase):
             ActivityData(
                 id=10,
                 subject_name="English",
-                section_id=1,
+                course_level_id=1,
                 periods_per_week=3,
                 teacher_id=1,
                 room_type_required=None,
@@ -315,7 +315,7 @@ class TestTrivialCase(unittest.TestCase):
             timeslots=self.timeslots,
             rooms=self.rooms,
             teachers=self.teachers,
-            sections=self.sections,
+            course_levels=self.course_levels,
             activities=activities,
             constraints=[],
         )
@@ -339,28 +339,28 @@ class TestDisplacementCase(unittest.TestCase):
     Setup:
       - 2 timeslots (slot 1: Mon period 1, slot 2: Mon period 2)
       - 2 rooms (Room 101 and Room 102)
-      - 2 teachers, 2 sections
-      - Activity A: section 1, teacher 1, 1 period/week
-      - Activity B: section 1, teacher 2, 1 period/week
-        (same section as A → A and B CANNOT share a slot)
-      - Activity C: section 2, teacher 1, 1 period/week
+      - 2 teachers, 2 course levels
+      - Activity A: course level 1, teacher 1, 1 period/week
+      - Activity B: course level 1, teacher 2, 1 period/week
+        (same course level as A → A and B CANNOT share a slot)
+      - Activity C: course level 2, teacher 1, 1 period/week
         (same teacher as A → A and C CANNOT share a slot)
 
     Grid capacity: 2 slots × 2 rooms = 4 (slot, room) pairs available.
     Only 3 activities to place, so capacity is sufficient.
 
     Constraints that force displacement:
-      A and B must be in different slots (same section).
+      A and B must be in different slots (same course level).
       A and C must be in different slots (same teacher).
     Therefore A must be alone in one slot, and B and C must share the other
     slot (in different rooms — permitted since they have different teachers
-    and different sections).
+    and different course levels).
 
     Valid solutions:
       A→(slot1,R1), B→(slot2,R1), C→(slot2,R2)   [or A in slot2, B&C in slot1]
 
     The greedy pass may initially place A in slot 1 and then try to place C
-    also in slot 1 (different section, different room is fine — wait, same
+    also in slot 1 (different course level, different room is fine — wait, same
     teacher as A → blocked).  So C must go to slot 2.  Then B also goes to
     slot 2.  Both B and C are in slot 2 with different rooms and no teacher
     conflict — this works without displacement.
@@ -393,25 +393,25 @@ class TestDisplacementCase(unittest.TestCase):
             TeacherData(id=2, name="Teacher Two", max_hours_per_day=4, unavailable_slot_ids=frozenset()),
         ]
 
-        self.sections = [
-            SectionData(id=1, name="Sec-1"),
-            SectionData(id=2, name="Sec-2"),
+        self.course_levels = [
+            CourseLevelData(id=1, name="Sec-1"),
+            CourseLevelData(id=2, name="Sec-2"),
         ]
 
         self.activities = [
-            # A: section 1, teacher 1
-            ActivityData(id=1, subject_name="Maths", section_id=1, periods_per_week=1, teacher_id=1),
-            # B: section 1, teacher 2 (same section as A → must be in different slot)
-            ActivityData(id=2, subject_name="English", section_id=1, periods_per_week=1, teacher_id=2),
-            # C: section 2, teacher 1 (same teacher as A → must be in different slot from A)
-            ActivityData(id=3, subject_name="Science", section_id=2, periods_per_week=1, teacher_id=1),
+            # A: course level 1, teacher 1
+            ActivityData(id=1, subject_name="Maths", course_level_id=1, periods_per_week=1, teacher_id=1),
+            # B: course level 1, teacher 2 (same course level as A → must be in different slot)
+            ActivityData(id=2, subject_name="English", course_level_id=1, periods_per_week=1, teacher_id=2),
+            # C: course level 2, teacher 1 (same teacher as A → must be in different slot from A)
+            ActivityData(id=3, subject_name="Science", course_level_id=2, periods_per_week=1, teacher_id=1),
         ]
 
         self.schedule_input = ScheduleInput(
             timeslots=self.timeslots,
             rooms=self.rooms,
             teachers=self.teachers,
-            sections=self.sections,
+            course_levels=self.course_levels,
             activities=self.activities,
             constraints=[],
         )
@@ -433,20 +433,20 @@ class TestDisplacementCase(unittest.TestCase):
         self.assertTrue(result.success)
         _assert_all_activities_placed(self, result, self.schedule_input)
 
-    def test_section_not_double_booked(self):
-        """Section 1 (activities A and B) must be in different timeslots."""
+    def test_course_level_not_double_booked(self):
+        """Course level 1 (activities A and B) must be in different timeslots."""
         result = run_scheduler(self.schedule_input, max_restarts=20, seed=0)
         self.assertTrue(result.success)
 
-        sec1_slots = [
+        cl1_slots = [
             p.timeslot_id
             for p in result.placements
-            if self.schedule_input.activities_by_id[p.activity_id].section_id == 1
+            if self.schedule_input.activities_by_id[p.activity_id].course_level_id == 1
         ]
         self.assertEqual(
-            len(sec1_slots),
-            len(set(sec1_slots)),
-            msg="Section 1 has a double-booked timeslot.",
+            len(cl1_slots),
+            len(set(cl1_slots)),
+            msg="Course level 1 has a double-booked timeslot.",
         )
 
     def test_teacher_not_double_booked(self):
@@ -510,13 +510,13 @@ class TestInfeasibleCase(unittest.TestCase):
             ),
         ]
 
-        self.sections = [SectionData(id=1, name="Sec-X")]
+        self.course_levels = [CourseLevelData(id=1, name="Sec-X")]
 
         self.activities = [
             ActivityData(
                 id=1,
                 subject_name="Ghost Class",
-                section_id=1,
+                course_level_id=1,
                 periods_per_week=1,
                 teacher_id=1,
                 room_type_required=None,
@@ -527,7 +527,7 @@ class TestInfeasibleCase(unittest.TestCase):
             timeslots=self.timeslots,
             rooms=self.rooms,
             teachers=self.teachers,
-            sections=self.sections,
+            course_levels=self.course_levels,
             activities=self.activities,
             constraints=[],
         )
@@ -584,9 +584,9 @@ class TestInfeasibleCase(unittest.TestCase):
         teachers = [
             TeacherData(id=10, name="Overloaded Teacher", max_hours_per_day=0, unavailable_slot_ids=frozenset()),
         ]
-        sections = [SectionData(id=10, name="Sec-Y")]
+        course_levels = [CourseLevelData(id=10, name="Sec-Y")]
         activities = [
-            ActivityData(id=10, subject_name="Impossible", section_id=10, periods_per_week=1, teacher_id=10),
+            ActivityData(id=10, subject_name="Impossible", course_level_id=10, periods_per_week=1, teacher_id=10),
         ]
         constraints = [
             ConstraintData(
@@ -602,7 +602,7 @@ class TestInfeasibleCase(unittest.TestCase):
             timeslots=timeslots,
             rooms=[RoomData(id=10, name="R", capacity=30, room_type="LECTURE")],
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -646,17 +646,17 @@ class TestSoftPenaltyCase(unittest.TestCase):
         teachers = [
             TeacherData(id=1, name="Dr. Soft", max_hours_per_day=10, unavailable_slot_ids=frozenset()),
         ]
-        sections = [
-            SectionData(id=1, name="Alpha"),
-            SectionData(id=2, name="Beta"),
-            SectionData(id=3, name="Gamma"),
+        course_levels = [
+            CourseLevelData(id=1, name="Alpha"),
+            CourseLevelData(id=2, name="Beta"),
+            CourseLevelData(id=3, name="Gamma"),
         ]
-        # 3 activities for the same teacher but different sections
+        # 3 activities for the same teacher but different course levels
         # → engine can place them in 3 different slots on the same day
         activities = [
-            ActivityData(id=1, subject_name="Maths", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="Physics", section_id=2, periods_per_week=1, teacher_id=1),
-            ActivityData(id=3, subject_name="Chemistry", section_id=3, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="Maths", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="Physics", course_level_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="Chemistry", course_level_id=3, periods_per_week=1, teacher_id=1),
         ]
         constraints = [
             ConstraintData(
@@ -672,7 +672,7 @@ class TestSoftPenaltyCase(unittest.TestCase):
             timeslots=timeslots,
             rooms=rooms,
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -752,15 +752,15 @@ class TestSoftPenaltyCase(unittest.TestCase):
         ]
         rooms = [RoomData(id=1, name="R", capacity=40, room_type="LECTURE")]
         teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
-        sections = [
-            SectionData(id=1, name="S1"),
-            SectionData(id=2, name="S2"),
-            SectionData(id=3, name="S3"),
+        course_levels = [
+            CourseLevelData(id=1, name="S1"),
+            CourseLevelData(id=2, name="S2"),
+            CourseLevelData(id=3, name="S3"),
         ]
         activities = [
-            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
-            ActivityData(id=3, subject_name="C", section_id=3, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="A", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", course_level_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="C", course_level_id=3, periods_per_week=1, teacher_id=1),
         ]
         constraints = [
             ConstraintData(
@@ -778,7 +778,7 @@ class TestSoftPenaltyCase(unittest.TestCase):
                    RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
                    RoomData(id=3, name="R3", capacity=40, room_type="LECTURE")],
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -815,7 +815,7 @@ class TestSoftPenaltyCase(unittest.TestCase):
             RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
         ]
         teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
-        sections = [SectionData(id=1, name="S1"), SectionData(id=2, name="S2")]
+        course_levels = [CourseLevelData(id=1, name="S1"), CourseLevelData(id=2, name="S2")]
         constraints = [
             ConstraintData(
                 id=2,
@@ -827,14 +827,14 @@ class TestSoftPenaltyCase(unittest.TestCase):
         ]
 
         activities_dummy = [
-            ActivityData(id=1, subject_name="X", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="Y", section_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="X", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="Y", course_level_id=2, periods_per_week=1, teacher_id=1),
         ]
         si = ScheduleInput(
             timeslots=timeslots,
             rooms=rooms,
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities_dummy,
             constraints=constraints,
         )
@@ -863,7 +863,7 @@ class TestSoftPenaltyCase(unittest.TestCase):
 
 
 class TestRoomCapacity(unittest.TestCase):
-    """Room capacity hard constraint uses SectionData.student_count."""
+    """Room capacity hard constraint uses CourseLevelData.student_count."""
 
     def setUp(self):
         self.schedule_input = ScheduleInput(
@@ -877,8 +877,8 @@ class TestRoomCapacity(unittest.TestCase):
             teachers=[
                 TeacherData(1, "Dr. Capacity", 4, frozenset()),
             ],
-            sections=[
-                SectionData(1, "Large Section", student_count=50),
+            course_levels=[
+                CourseLevelData(1, "Large Course Level", student_count=50),
             ],
             activities=[
                 ActivityData(1, "Physics", 1, 1, teacher_id=1),
@@ -928,17 +928,17 @@ class TestTeacherCentredSoftConstraints(unittest.TestCase):
             RoomData(id=4, name="R4", capacity=40, room_type="LECTURE"),
         ]
         teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
-        sections = [
-            SectionData(id=1, name="S1"),
-            SectionData(id=2, name="S2"),
-            SectionData(id=3, name="S3"),
-            SectionData(id=4, name="S4"),
+        course_levels = [
+            CourseLevelData(id=1, name="S1"),
+            CourseLevelData(id=2, name="S2"),
+            CourseLevelData(id=3, name="S3"),
+            CourseLevelData(id=4, name="S4"),
         ]
         activities = [
-            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
-            ActivityData(id=3, subject_name="C", section_id=3, periods_per_week=1, teacher_id=1),
-            ActivityData(id=4, subject_name="D", section_id=4, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="A", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", course_level_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="C", course_level_id=3, periods_per_week=1, teacher_id=1),
+            ActivityData(id=4, subject_name="D", course_level_id=4, periods_per_week=1, teacher_id=1),
         ]
         constraints = [
             ConstraintData(
@@ -954,7 +954,7 @@ class TestTeacherCentredSoftConstraints(unittest.TestCase):
             timeslots=timeslots,
             rooms=rooms,
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -979,10 +979,10 @@ class TestTeacherCentredSoftConstraints(unittest.TestCase):
             RoomData(id=2, name="R2", capacity=40, room_type="LECTURE"),
         ]
         teachers = [TeacherData(id=1, name="T", max_hours_per_day=10, unavailable_slot_ids=frozenset())]
-        sections = [SectionData(id=1, name="S1"), SectionData(id=2, name="S2")]
+        course_levels = [CourseLevelData(id=1, name="S1"), CourseLevelData(id=2, name="S2")]
         activities = [
-            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="A", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", course_level_id=2, periods_per_week=1, teacher_id=1),
         ]
         constraints = [
             ConstraintData(
@@ -1000,7 +1000,7 @@ class TestTeacherCentredSoftConstraints(unittest.TestCase):
             timeslots=timeslots,
             rooms=rooms,
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -1028,15 +1028,15 @@ class TestSyntheticDailyLimitFromProfile(unittest.TestCase):
             RoomData(id=3, name="R3", capacity=40, room_type="LECTURE"),
         ]
         teachers = [TeacherData(id=1, name="T", max_hours_per_day=2, unavailable_slot_ids=frozenset())]
-        sections = [
-            SectionData(id=1, name="S1"),
-            SectionData(id=2, name="S2"),
-            SectionData(id=3, name="S3"),
+        course_levels = [
+            CourseLevelData(id=1, name="S1"),
+            CourseLevelData(id=2, name="S2"),
+            CourseLevelData(id=3, name="S3"),
         ]
         activities = [
-            ActivityData(id=1, subject_name="A", section_id=1, periods_per_week=1, teacher_id=1),
-            ActivityData(id=2, subject_name="B", section_id=2, periods_per_week=1, teacher_id=1),
-            ActivityData(id=3, subject_name="C", section_id=3, periods_per_week=1, teacher_id=1),
+            ActivityData(id=1, subject_name="A", course_level_id=1, periods_per_week=1, teacher_id=1),
+            ActivityData(id=2, subject_name="B", course_level_id=2, periods_per_week=1, teacher_id=1),
+            ActivityData(id=3, subject_name="C", course_level_id=3, periods_per_week=1, teacher_id=1),
         ]
         constraints = [
             ConstraintData(
@@ -1052,7 +1052,7 @@ class TestSyntheticDailyLimitFromProfile(unittest.TestCase):
             timeslots=timeslots,
             rooms=rooms,
             teachers=teachers,
-            sections=sections,
+            course_levels=course_levels,
             activities=activities,
             constraints=constraints,
         )
@@ -1072,49 +1072,51 @@ class TestModelsIoSyntheticDailyLimit(DjangoTestCase):
 
     def test_load_schedule_input_synthesizes_teacher_daily_limit(self):
         from accounts.models import User
-        from academics.models import ClassSession, Section, Subject, TeacherProfile
-        from core.models import Department, Room, Semester
+        from academics.models import ClassSession, Course, Subject, TeacherProfile
+        from core.models import Department, Room, Session
         from core.testing import get_test_school
         from scheduling.engine.models_io import load_schedule_input
         from scheduling.models import TimeSlot
 
         school = get_test_school(code="engine-synth")
-        semester = Semester.objects.create(
+        session = Session.objects.create(
             name="Fall 2026 Synth",
-            code="F26S",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
             school=school,
         )
-        department = Department.objects.create(name="CS", code="CS", school=school)
-        section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=semester,
+        department = Department.objects.create(name="CS Synth", code="CSSYN", school=school)
+        course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BECE-SYN",
             department=department,
         )
+        course_level = course.levels.get(level=1)
+        course_level.student_count = 30
+        course_level.save(update_fields=["student_count"])
         subject = Subject.objects.create(
             name="Math",
-            code="MATH101",
+            code="MATH101-SYN",
             lecture_hours_per_week=1,
-            department=department,
         )
+        subject.departments.add(department)
         teacher_user = User.objects.create_user(
-            username="synth_teacher",
+            username="synth_teacher_engine",
             password="password",
             role=User.RoleChoices.TEACHER,
+            school=school,
         )
         teacher = TeacherProfile.objects.create(
             user=teacher_user,
-            employee_id="SYNTH1",
+            employee_id="SYNTH-ENG-1",
             max_hours_per_day=3,
         )
         ClassSession.objects.create(
-            section=section,
+            session=session,
             subject=subject,
             teacher=teacher,
+            course_level=course_level,
             periods_per_week=1,
         )
         TimeSlot.objects.create(
@@ -1124,9 +1126,9 @@ class TestModelsIoSyntheticDailyLimit(DjangoTestCase):
             end_time="10:00",
             is_active=True,
         )
-        Room.objects.create(name="101A", capacity=30, room_type="LECTURE", is_active=True, school=school)
+        Room.objects.create(name="101A-SYN", capacity=30, room_type="LECTURE", is_active=True, school=school)
 
-        schedule_input = load_schedule_input(semester.id)
+        schedule_input = load_schedule_input(session.id)
         daily_limits = [
             c for c in schedule_input.constraints
             if c.constraint_type == "MAX_DAILY_HOURS" and c.teacher_id == teacher.id

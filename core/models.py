@@ -62,29 +62,35 @@ class Room(models.Model):
         return f"{self.name} ({self.get_room_type_display()})"
 
 
-class Semester(models.Model):
+class Session(models.Model):
+    """School-wide academic calendar window (start/end dates)."""
+
     school = models.ForeignKey(
         School,
         on_delete=models.PROTECT,
-        related_name='semesters',
+        related_name='sessions',
     )
-    name = models.CharField(max_length=100)  # e.g. Fall 2026
-    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100, help_text="Display label, e.g. Fall 2026")
     start_date = models.DateField()
     end_date = models.DateField()
     is_active = models.BooleanField(default=False)
 
+    class Meta:
+        ordering = ['-start_date']
+
     def clean(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError({"end_date": "End date must be on or after the start date."})
         if self.is_active:
-            active_semesters = Semester.objects.filter(is_active=True, school=self.school)
+            active_sessions = Session.objects.filter(is_active=True, school=self.school)
             if self.pk:
-                active_semesters = active_semesters.exclude(pk=self.pk)
-            if active_semesters.exists():
-                raise ValidationError({"is_active": "Only one semester can be active at a time."})
+                active_sessions = active_sessions.exclude(pk=self.pk)
+            if active_sessions.exists():
+                raise ValidationError({"is_active": "Only one session can be active at a time."})
 
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.start_date} → {self.end_date})"

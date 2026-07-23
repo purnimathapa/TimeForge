@@ -7,7 +7,7 @@
     <div class="mb-1">
         <p class="eyebrow mb-1">Academics</p>
         <h1 class="page-title h3 mb-0">Class Sessions</h1>
-        <p class="text-muted mb-0">Each session maps a subject to a section and teacher for scheduling.</p>
+        <p class="text-muted mb-0">Each session maps a subject to a course level and teacher for scheduling.</p>
     </div>
 
     <div class="list-toolbar mt-3">
@@ -31,7 +31,10 @@
                     </div>
                     <div class="fw-semibold mb-2">{{ object.subject.name }}</div>
                     <div class="d-flex flex-column gap-2">
-                        <span class="entity-meta"><i data-lucide="users"></i> {{ object.section.name }}</span>
+                        <span class="entity-meta"><i data-lucide="book-marked"></i> {{ object.course_level.display_name }}</span>
+                        {% if object.session %}
+                        <span class="entity-meta"><i data-lucide="calendar-range"></i> {{ object.session.name }}</span>
+                        {% endif %}
                         <span class="entity-meta"><i data-lucide="graduation-cap"></i>
                             {% if object.teacher %}{{ object.teacher.display_name }}{% else %}Unassigned{% endif %}
                         </span>

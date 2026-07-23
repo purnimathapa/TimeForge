@@ -17,7 +17,9 @@ urlpatterns = [
     # ── Grid views (Prompt 12) ──
     path('teacher/',   views.TeacherTimetableView.as_view(),  name='teacher_view'),
     path('room/',      views.RoomTimetableView.as_view(),     name='room_view'),
-    path('section/',   views.SectionTimetableView.as_view(),  name='section_view'),
+    path('course-level/', views.CourseLevelTimetableView.as_view(), name='course_level_view'),
+    # Compatibility alias for old section URL bookmarks
+    path('section/', views.CourseLevelTimetableView.as_view(), name='section_view'),
     path('reports/',   views.ReportsView.as_view(),           name='reports'),
     path('export/<str:scope>/<str:file_format>/', views.ExportTimetableView.as_view(), name='export'),
     path('slots/move/', views.MoveSlotView.as_view(),          name='move_slot'),

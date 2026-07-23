@@ -20,7 +20,7 @@
             <table class="table table-striped mb-0">
                 <thead class="table-dark">
                     <tr>
-                        <th>Semester</th>
+                        <th>Session</th>
                         <th>Version</th>
                         <th>Status</th>
                         <th class="text-end">Penalty</th>
@@ -30,7 +30,7 @@
                 <tbody>
                     {% for timetable in timetables %}
                     <tr>
-                        <td>{{ timetable.semester.name }}</td>
+                        <td>{{ timetable.session.name }}</td>
                         <td>v{{ timetable.version }}</td>
                         <td>{{ timetable.get_status_display }}</td>
                         <td class="text-end">{{ timetable.penalty_score }}</td>

@@ -1,7 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from core.models import Department, Semester
+from core.models import Department, Session
+
 
 class Subject(models.Model):
     name = models.CharField(max_length=150)
@@ -10,29 +11,79 @@ class Subject(models.Model):
     lecture_hours_per_week = models.PositiveIntegerField(default=3)
     lab_hours_per_week = models.PositiveIntegerField(default=0)
     description = models.TextField(blank=True)
-    department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name='subjects')
+    departments = models.ManyToManyField(
+        Department,
+        related_name='subjects',
+        blank=False,
+        help_text='A subject may be offered by one or more departments.',
+    )
     is_active = models.BooleanField(default=True)
-
-    class Meta:
-        unique_together = ('code', 'department')
 
     def __str__(self):
         return f"{self.code} - {self.name}"
 
-class Section(models.Model):
-    name = models.CharField(max_length=100) # e.g. "CS Batch 2023 A"
-    year = models.PositiveIntegerField() # e.g. 1, 2, 3, 4
-    section_label = models.CharField(max_length=10) # e.g. "A", "B"
-    student_count = models.PositiveIntegerField(default=0)
-    department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name='sections')
-    semester = models.ForeignKey(Semester, on_delete=models.PROTECT, related_name='sections')
+    @property
+    def department_names(self):
+        names = list(self.departments.values_list('name', flat=True))
+        return ', '.join(names) if names else 'No department'
+
+
+class Course(models.Model):
+    """Degree / program catalog entry (e.g. BE in Computer Engineering)."""
+
+    name = models.CharField(max_length=150)
+    code = models.CharField(max_length=30)
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.PROTECT,
+        related_name='courses',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ('name', 'semester')
+        unique_together = ('code', 'department')
+        ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} ({self.semester.name})"
+        return f"{self.code} — {self.name}"
+
+    def ensure_levels(self):
+        """Create CourseLevel rows 1–8 if missing."""
+        existing = set(self.levels.values_list('level', flat=True))
+        to_create = [
+            CourseLevel(course=self, level=level)
+            for level in range(1, 9)
+            if level not in existing
+        ]
+        if to_create:
+            CourseLevel.objects.bulk_create(to_create)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.ensure_levels()
+
+
+class CourseLevel(models.Model):
+    """Study level (semester 1–8) within a Course — the schedulable cohort unit."""
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='levels')
+    level = models.PositiveSmallIntegerField(
+        choices=[(i, f'Semester {i}') for i in range(1, 9)],
+    )
+    student_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('course', 'level')
+        ordering = ['course__name', 'level']
+
+    def __str__(self):
+        return f"{self.course.code} · Sem {self.level}"
+
+    @property
+    def display_name(self):
+        return f"{self.course.name} — Semester {self.level}"
+
 
 class TeacherProfile(models.Model):
     class Title(models.TextChoices):
@@ -52,7 +103,12 @@ class TeacherProfile(models.Model):
         default=False,
         help_text="Tick if this is visiting / guest faculty.",
     )
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='teachers')
+    departments = models.ManyToManyField(
+        Department,
+        related_name='teachers',
+        blank=True,
+        help_text='A teacher may be affiliated with one or more departments.',
+    )
     max_hours_per_day = models.PositiveIntegerField(default=4)
     max_hours_per_week = models.PositiveIntegerField(default=20)
     is_active = models.BooleanField(default=True)
@@ -87,6 +143,11 @@ class TeacherProfile(models.Model):
         title = f"{self.title} " if self.title else ""
         return f"{title}{self.display_name}".strip()
 
+    @property
+    def department_names(self):
+        names = list(self.departments.values_list('name', flat=True))
+        return ', '.join(names) if names else 'No department'
+
     def __str__(self):
         return self.ranked_name
 
@@ -97,34 +158,49 @@ class ClassRepProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='class_rep_profile',
     )
-    section = models.ForeignKey(
-        Section,
+    course_level = models.ForeignKey(
+        CourseLevel,
         on_delete=models.CASCADE,
         related_name='class_reps',
     )
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.user.get_full_name()} ({self.section.name})"
+        return f"{self.user.get_full_name()} ({self.course_level})"
 
 
 class ClassSession(models.Model):
     """
-    The schedulable teaching activity (unplaced).
-    Derived from a SectionOffering / Subject for a Section.
+    The schedulable teaching activity (unplaced) for a CourseLevel in a Session.
     """
+    session = models.ForeignKey(
+        Session,
+        on_delete=models.CASCADE,
+        related_name='class_sessions',
+    )
     subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name='class_sessions')
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='class_sessions')
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='class_sessions')
+    teacher = models.ForeignKey(
+        TeacherProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='class_sessions',
+    )
+    course_level = models.ForeignKey(
+        CourseLevel,
+        on_delete=models.CASCADE,
+        related_name='class_sessions',
+    )
     periods_per_week = models.PositiveIntegerField(default=1)
-    
+
     def clean(self):
         from scheduling.models import TimeSlot
-        # Ensure periods_per_week doesn't exceed total available timeslots
         total_slots = TimeSlot.objects.filter(is_active=True).count()
         if total_slots > 0 and self.periods_per_week > total_slots:
             raise ValidationError({
-                "periods_per_week": f"Cannot exceed the total number of active time slots in a week ({total_slots})."
+                "periods_per_week": (
+                    f"Cannot exceed the total number of active time slots in a week ({total_slots})."
+                ),
             })
 
     def save(self, *args, **kwargs):
@@ -133,6 +209,4 @@ class ClassSession(models.Model):
 
     def __str__(self):
         teacher_name = self.teacher.user.get_full_name() if self.teacher else "Unassigned"
-        return f"{self.subject.code} - {self.section.name} ({teacher_name})"
-
-
+        return f"{self.subject.code} - {self.course_level} ({teacher_name})"

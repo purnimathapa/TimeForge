@@ -1,9 +1,9 @@
 from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from core.models import Department, Room, Semester
+from core.models import Department, Room, Session
 from core.tenant import filter_by_school, school_filter
-from academics.models import Subject, Section, TeacherProfile
+from academics.models import Subject, Course, TeacherProfile
 from scheduling.models import Constraint
 
 
@@ -33,29 +33,29 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 TeacherProfile.objects.all(), request, 'user__school'
             ).count()
             context['subject_count'] = filter_by_school(
-                Subject.objects.all(), request, 'department__school'
-            ).count()
-            context['section_count'] = filter_by_school(
-                Section.objects.all(), request, 'department__school'
+                Subject.objects.all(), request, 'departments__school'
+            ).distinct().count()
+            context['course_count'] = filter_by_school(
+                Course.objects.all(), request, 'department__school'
             ).count()
             context['constraint_count'] = filter_by_school(
-                Constraint.objects.filter(is_active=True), request, 'semester__school'
+                Constraint.objects.filter(is_active=True), request, 'session__school'
             ).count()
 
-            active_semester = school_filter(
-                Semester.objects.filter(is_active=True), request
+            active_session = school_filter(
+                Session.objects.filter(is_active=True), request
             ).first()
-            context['active_semester'] = active_semester
+            context['active_session'] = active_session
             latest_timetable = None
-            if active_semester:
+            if active_session:
                 latest_timetable = (
-                    Timetable.objects.filter(semester=active_semester)
+                    Timetable.objects.filter(session=active_session)
                     .order_by('-version')
                     .first()
                 )
                 context['published_timetable'] = (
                     Timetable.objects.filter(
-                        semester=active_semester,
+                        session=active_session,
                         status=Timetable.Status.PUBLISHED,
                     )
                     .order_by('-version')
@@ -71,16 +71,16 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         elif role in ('TEACHER', 'CLASS_REP'):
             from timetable.models import Timetable
 
-            active_semester = school_filter(
-                Semester.objects.filter(is_active=True), request
+            active_session = school_filter(
+                Session.objects.filter(is_active=True), request
             ).first()
-            context['active_semester'] = active_semester
+            context['active_session'] = active_session
 
             published = None
-            if active_semester:
+            if active_session:
                 published = (
                     Timetable.objects.filter(
-                        semester=active_semester,
+                        session=active_session,
                         status=Timetable.Status.PUBLISHED,
                     )
                     .order_by('-version')
@@ -91,7 +91,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             if role == 'CLASS_REP':
                 profile = getattr(self.request.user, 'class_rep_profile', None)
                 context['class_rep_profile'] = profile
-                context['section'] = profile.section if profile else None
+                context['course_level'] = profile.course_level if profile else None
 
             context.update(self._role_schedule_context(role, published))
 
@@ -117,7 +117,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             TimetableSlot.objects.filter(timetable=published)
             .select_related(
                 'class_session__subject',
-                'class_session__section',
+                'class_session__course_level__course',
                 'timeslot',
                 'room',
                 'teacher__user',
@@ -129,8 +129,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             base = base.filter(teacher=profile) if profile else base.none()
         else:  # CLASS_REP
             profile = getattr(user, 'class_rep_profile', None)
-            if profile and profile.section_id:
-                base = base.filter(class_session__section_id=profile.section_id)
+            if profile and profile.course_level_id:
+                base = base.filter(class_session__course_level_id=profile.course_level_id)
             else:
                 base = base.none()
 
@@ -242,7 +242,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 )
                 .select_related(
                     'class_session__subject',
-                    'class_session__section',
+                    'class_session__course_level__course',
                     'timeslot',
                     'room',
                     'teacher__user',

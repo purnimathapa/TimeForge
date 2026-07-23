@@ -29,7 +29,6 @@ def measure_view(url_name, *args, **kwargs):
 
 # Need to find an active timetable.
 from timetable.models import Timetable
-from scheduling.models import Semester
 
 timetable = Timetable.objects.first()
 

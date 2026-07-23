@@ -131,8 +131,8 @@ def _slot_lines(slot, scope, period_meta=None):
         lines.append(
             f"{period_meta['start_time']:%H:%M}–{period_meta['end_time']:%H:%M}"
         )
-    if scope != "section":
-        lines.append(slot.class_session.section.name)
+    if scope != "course_level":
+        lines.append(str(slot.class_session.course_level))
     if slot.is_locked:
         lines.append("Locked")
     return lines
@@ -167,8 +167,8 @@ def _pdf_cell_paragraph(slots, scope, period_meta, styles):
                 f"{period_meta['start_time']:%H:%M}–{period_meta['end_time']:%H:%M}"
             )
         )
-        if scope != "section":
-            parts.append(_escape(slot.class_session.section.name))
+        if scope != "course_level":
+            parts.append(_escape(str(slot.class_session.course_level)))
         if slot.is_locked:
             parts.append("Locked")
         blocks.append("<br/>".join(parts))

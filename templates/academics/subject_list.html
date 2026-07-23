@@ -32,7 +32,7 @@
                     </div>
                     <div class="fw-semibold mb-2">{{ object.name }}</div>
                     <div class="d-flex flex-column gap-2">
-                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department.name }}</span>
+                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department_names }}</span>
                         <span class="entity-meta"><i data-lucide="award"></i> {{ object.credit_hours }} credits</span>
                         <span class="entity-meta"><i data-lucide="clock"></i> {{ object.lecture_hours_per_week }} lecture{% if object.lab_hours_per_week %} · {{ object.lab_hours_per_week }} lab{% endif %} hrs/week</span>
                     </div>

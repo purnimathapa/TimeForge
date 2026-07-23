@@ -1,12 +1,12 @@
 """
 timetable/views.py
 
-Read-only timetable grid views filtered by Teacher, Room, and Section,
+Read-only timetable grid views filtered by Teacher, Room, and Course Level,
 plus a soft-constraint Conflict Report view.
 
 All grid views share a common base that:
   - selects the latest timetable (PUBLISHED preferred, else DRAFT) for the
-    active semester, overridable via ?timetable_id=
+    active session, overridable via ?timetable_id=
   - queries TimetableSlot with select_related to avoid N+1
   - builds a {day → {period → [slot, …]}} grid structure for the template
 """
@@ -29,8 +29,8 @@ from django.views.generic import DeleteView, DetailView, ListView, TemplateView
 
 from accounts.mixins import RoleRequiredMixin
 from core.mixins import ProtectedDeleteMixin
-from academics.models import TeacherProfile, Section
-from core.models import Department, Room, Semester
+from academics.models import TeacherProfile, CourseLevel
+from core.models import Department, Room, Session
 from core.tenant import filter_by_school, school_filter
 from scheduling.engine.algorithm import run_scheduler
 from scheduling.engine.constraints import (
@@ -68,25 +68,25 @@ def _subject_colour_index(subject_code: str) -> int:
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-def _get_active_semester(request):
-    """Return the currently active semester for the request tenant, or None."""
-    return school_filter(Semester.objects.filter(is_active=True), request).first()
+def _get_active_session(request):
+    """Return the currently active session for the request tenant, or None."""
+    return school_filter(Session.objects.filter(is_active=True), request).first()
 
 
-def _scoped_semesters(request):
-    return school_filter(Semester.objects.all(), request).order_by('-start_date', '-pk')
+def _scoped_sessions(request):
+    return school_filter(Session.objects.all(), request).order_by('-start_date', '-pk')
 
 
 def _scoped_departments(request):
     return school_filter(Department.objects.filter(is_active=True), request).order_by('name')
 
 
-def _get_selected_semester(request):
-    """Resolve semester from ?semester_id=, else the active semester (then newest)."""
-    qs = _scoped_semesters(request)
-    semester_id = request.GET.get('semester_id')
-    if semester_id:
-        selected = qs.filter(pk=semester_id).first()
+def _get_selected_session(request):
+    """Resolve session from ?session_id=, else the active session (then newest)."""
+    qs = _scoped_sessions(request)
+    session_id = request.GET.get('session_id')
+    if session_id:
+        selected = qs.filter(pk=session_id).first()
         if selected is not None:
             return selected
     return qs.filter(is_active=True).first() or qs.first()
@@ -101,14 +101,14 @@ def _get_selected_department(request):
 
 
 def _scoped_timetables(request):
-    return filter_by_school(Timetable.objects.all(), request, 'semester__school')
+    return filter_by_school(Timetable.objects.all(), request, 'session__school')
 
 
 def _scoped_timetable_slots(request):
     return filter_by_school(
         TimetableSlot.objects.all(),
         request,
-        'timetable__semester__school',
+        'timetable__session__school',
     )
 
 
@@ -116,7 +116,7 @@ def _scoped_draft_change_sets(request):
     return filter_by_school(
         DraftChangeSet.objects.all(),
         request,
-        'timetable__semester__school',
+        'timetable__session__school',
     )
 
 
@@ -132,22 +132,22 @@ def _scoped_rooms(request):
     return school_filter(Room.objects.filter(is_active=True), request)
 
 
-def _scoped_sections(request, semester=None):
+def _scoped_course_levels(request, session=None):
     qs = filter_by_school(
-        Section.objects.filter(is_active=True),
+        CourseLevel.objects.filter(is_active=True),
         request,
-        'department__school',
+        'course__department__school',
     )
-    if semester is not None:
-        qs = qs.filter(semester=semester)
+    if session is not None:
+        qs = qs.filter(class_sessions__session=session).distinct()
     return qs
 
 
 def _teachers_for_filters(request, department=None):
-    qs = _scoped_teacher_profiles(request).select_related('user', 'department')
+    qs = _scoped_teacher_profiles(request).select_related('user').prefetch_related('departments')
     if department is not None:
-        qs = qs.filter(department=department)
-    return qs.order_by('user__first_name', 'user__last_name')
+        qs = qs.filter(departments=department)
+    return qs.distinct().order_by('user__first_name', 'user__last_name')
 
 
 def _rooms_for_filters(request, department=None):
@@ -157,33 +157,35 @@ def _rooms_for_filters(request, department=None):
     return qs.order_by('name')
 
 
-def _sections_for_filters(request, semester=None, department=None):
-    qs = _scoped_sections(request, semester=semester).select_related('department', 'semester')
+def _course_levels_for_filters(request, session=None, department=None):
+    qs = _scoped_course_levels(request, session=session).select_related(
+        'course', 'course__department',
+    )
     if department is not None:
-        qs = qs.filter(department=department)
-    return qs.order_by('name')
+        qs = qs.filter(course__department=department)
+    return qs.order_by('course__name', 'level')
 
 
 def _school_id_for_request(request):
     return request.school.id if getattr(request, 'school', None) is not None else None
 
 
-def _get_timetable(request, semester):
+def _get_timetable(request, session):
     """
     Resolve the timetable to display.
 
     Priority:
       1. Explicit ?timetable_id= query param
-      2. Latest PUBLISHED timetable for the active semester
-      3. (Admins only) Latest DRAFT timetable for the active semester
+      2. Latest PUBLISHED timetable for the active session
+      3. (Admins only) Latest DRAFT timetable for the active session
 
     Non-admin users never receive a DRAFT timetable.
-    Returns (timetable, all_timetables_for_semester) or (None, qs).
+    Returns (timetable, all_timetables_for_session) or (None, qs).
     """
-    if semester is None:
+    if session is None:
         return None, Timetable.objects.none()
 
-    all_timetables = Timetable.objects.filter(semester=semester).order_by('-version')
+    all_timetables = Timetable.objects.filter(session=session).order_by('-version')
 
     is_admin = request.user.is_authenticated and request.user.is_admin()
 
@@ -223,7 +225,7 @@ def _get_base_slot_queryset(timetable):
         .filter(timetable=timetable)
         .select_related(
             'class_session__subject',
-            'class_session__section',
+            'class_session__course_level__course',
             'timeslot',
             'room',
             'teacher__user',
@@ -448,25 +450,25 @@ def _edit_lock_context(timetable, user):
 
 class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
     """
-    Shared base for Teacher / Room / Section timetable grid views.
+    Shared base for Teacher / Room / Course Level timetable grid views.
 
     Subclasses must implement:
       - get_filter_queryset(timetable)  → filtered TimetableSlot queryset
       - get_selector_context()          → dict with selector dropdown data
-      - filter_type                     → str ('teacher', 'room', or 'section')
+      - filter_type                     → str ('teacher', 'room', or 'course_level')
       - filter_label                    → str (display name for current entity)
 
     Shared query params:
-      - semester_id   → which semester's timetable versions to show
+      - session_id    → which session's timetable versions to show
       - department_id → optional department scope for entity dropdowns
-      - timetable_id  → version within the selected semester
-      - teacher_id / room_id / section_id → entity within the current view
+      - timetable_id  → version within the selected session
+      - teacher_id / room_id / course_level_id → entity within the current view
     """
     template_name = 'timetable/grid.html'
     filter_type = ''
 
-    def get_selected_semester(self):
-        return _get_selected_semester(self.request)
+    def get_selected_session(self):
+        return _get_selected_session(self.request)
 
     def get_selected_department(self):
         return _get_selected_department(self.request)
@@ -474,16 +476,16 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        semester = self.get_selected_semester()
+        session = self.get_selected_session()
         department = self.get_selected_department()
-        timetable, all_timetables = _get_timetable(self.request, semester)
+        timetable, all_timetables = _get_timetable(self.request, session)
 
         if not self.request.user.is_admin():
             all_timetables = all_timetables.filter(status=Timetable.Status.PUBLISHED)
 
-        ctx['semester'] = semester
+        ctx['session'] = session
         ctx['selected_department'] = department
-        ctx['all_semesters'] = _scoped_semesters(self.request)
+        ctx['all_sessions'] = _scoped_sessions(self.request)
         ctx['all_departments'] = _scoped_departments(self.request)
         ctx['timetable'] = timetable
         ctx['all_timetables'] = all_timetables
@@ -529,7 +531,7 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
 # ── Basic timetable placeholders ──────────────────────────────────────────
 
 class GenerateTimetableView(RoleRequiredMixin, View):
-    """Run the scheduling engine for the active semester and persist results."""
+    """Run the scheduling engine for the active session and persist results."""
     allowed_roles = ['ADMIN']
     default_max_restarts = 10
 
@@ -538,17 +540,17 @@ class GenerateTimetableView(RoleRequiredMixin, View):
         return redirect('home')
 
     def post(self, request, *args, **kwargs):
-        semester = _get_active_semester(self.request)
-        if semester is None:
+        session = _get_active_session(self.request)
+        if session is None:
             messages.error(
                 request,
-                "No active semester is configured. Activate a semester before generating.",
+                "No active session is configured. Activate a session before generating.",
             )
             return redirect('home')
 
         try:
             schedule_input = load_schedule_input(
-                semester.id,
+                session.id,
                 school_id=_school_id_for_request(request),
             )
         except ValueError as exc:
@@ -572,7 +574,7 @@ class GenerateTimetableView(RoleRequiredMixin, View):
         try:
             with transaction.atomic():
                 timetable = Timetable.objects.create(
-                    semester=semester,
+                    session=session,
                     status=Timetable.Status.DRAFT,
                     penalty_score=result.penalty,
                 )
@@ -605,7 +607,7 @@ class TimetableListView(RoleRequiredMixin, ListView):
     context_object_name = 'timetables'
 
     def get_queryset(self):
-        return _scoped_timetables(self.request).select_related('semester').order_by('-semester', '-version')
+        return _scoped_timetables(self.request).select_related('session').order_by('-session', '-version')
 
 
 class TimetableDetailView(RoleRequiredMixin, DetailView):
@@ -616,11 +618,11 @@ class TimetableDetailView(RoleRequiredMixin, DetailView):
     context_object_name = 'timetable'
 
     def get_queryset(self):
-        return _scoped_timetables(self.request).select_related('semester', 'published_by')
+        return _scoped_timetables(self.request).select_related('session', 'published_by')
 
 
 class PublishTimetableView(RoleRequiredMixin, View):
-    """Publish a draft timetable as the official schedule for its semester."""
+    """Publish a draft timetable as the official schedule for its session."""
     allowed_roles = ['ADMIN']
 
     def post(self, request, pk, *args, **kwargs):
@@ -632,7 +634,7 @@ class PublishTimetableView(RoleRequiredMixin, View):
 
         with transaction.atomic():
             Timetable.objects.filter(
-                semester=timetable.semester,
+                session=timetable.session,
                 status=Timetable.Status.PUBLISHED,
             ).update(status=Timetable.Status.ARCHIVED)
 
@@ -689,7 +691,7 @@ class TimetableDeleteView(RoleRequiredMixin, ProtectedDeleteMixin, DeleteView):
     success_url = reverse_lazy('timetable:list')
 
     def get_queryset(self):
-        return _scoped_timetables(self.request).select_related('semester')
+        return _scoped_timetables(self.request).select_related('session')
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -705,7 +707,7 @@ class TimetableDeleteView(RoleRequiredMixin, ProtectedDeleteMixin, DeleteView):
     def form_valid(self, form):
         self.success_message = (
             f"Timetable v{self.object.version} for "
-            f"{self.object.semester.name} was deleted."
+            f"{self.object.session.name} was deleted."
         )
         return super().form_valid(form)
 
@@ -716,7 +718,7 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
     """
     Mobile-first personal routine for teachers and class reps.
 
-    Uses only PUBLISHED timetables for the active semester.
+    Uses only PUBLISHED timetables for the active session.
     """
     allowed_roles = ['TEACHER', 'CLASS_REP']
     template_name = 'timetable/my_routine.html'
@@ -726,10 +728,10 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
         user = self.request.user
         now = _local_now()
 
-        semester = _get_active_semester(self.request)
-        timetable, _all_timetables = _get_timetable(self.request, semester)
+        session = _get_active_session(self.request)
+        timetable, _all_timetables = _get_timetable(self.request, session)
 
-        ctx['semester'] = semester
+        ctx['session'] = session
         ctx['timetable'] = timetable
         ctx['now'] = now
         ctx['routine_role'] = user.role
@@ -739,10 +741,10 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
         ctx['week_grid'] = {}
         ctx['days'] = []
         ctx['periods'] = []
-        ctx['section'] = None
+        ctx['course_level'] = None
         ctx['slot_count'] = 0
 
-        if not semester or not timetable:
+        if not session or not timetable:
             return ctx
 
         filtered_qs = self._get_routine_slots(timetable)
@@ -770,7 +772,7 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
         if user.is_class_rep():
             profile = getattr(user, 'class_rep_profile', None)
             if profile and profile.is_active:
-                ctx['section'] = profile.section
+                ctx['course_level'] = profile.course_level
 
         return ctx
 
@@ -787,7 +789,7 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
         profile = getattr(user, 'class_rep_profile', None)
         if profile is None or not profile.is_active:
             return TimetableSlot.objects.none()
-        return base_qs.filter(class_session__section=profile.section)
+        return base_qs.filter(class_session__course_level=profile.course_level)
 
 
 class TimetableDirectoryView(RoleRequiredMixin, TemplateView):
@@ -835,7 +837,7 @@ class TeacherTimetableView(BaseTimetableGridView):
         department = self.get_selected_department()
         # Keep the signed-in teacher visible even when a department filter
         # would otherwise hide them from the dropdown.
-        if department is None or profile.department_id == department.pk:
+        if department is None or profile.departments.filter(pk=department.pk).exists():
             return profile
         return qs.first()
 
@@ -891,49 +893,51 @@ class RoomTimetableView(RoleRequiredMixin, BaseTimetableGridView):
         }
 
 
-# ── Section Timetable View ────────────────────────────────────────────────
+# ── Course Level Timetable View ───────────────────────────────────────────
 
-class SectionTimetableView(RoleRequiredMixin, BaseTimetableGridView):
-    """Section timetable grid with section selector dropdown."""
+class CourseLevelTimetableView(RoleRequiredMixin, BaseTimetableGridView):
+    """Course-level timetable grid with course-level selector dropdown."""
     allowed_roles = ['ADMIN', 'TEACHER', 'CLASS_REP']
-    filter_type = 'section'
+    filter_type = 'course_level'
 
-    def _section_queryset(self):
-        return _sections_for_filters(
+    def _course_level_queryset(self):
+        return _course_levels_for_filters(
             self.request,
-            semester=self.get_selected_semester(),
+            session=self.get_selected_session(),
             department=self.get_selected_department(),
         )
 
-    def _get_selected_section(self):
-        qs = self._section_queryset()
-        section_id = self.request.GET.get('section_id')
-        if section_id:
-            selected = qs.filter(pk=section_id).first()
+    def _get_selected_course_level(self):
+        qs = self._course_level_queryset()
+        course_level_id = self.request.GET.get('course_level_id')
+        if course_level_id:
+            selected = qs.filter(pk=course_level_id).first()
             if selected:
                 return selected
         if self.request.user.is_class_rep():
             profile = getattr(self.request.user, 'class_rep_profile', None)
             if profile and profile.is_active:
-                owned = qs.filter(pk=profile.section_id).first()
+                owned = qs.filter(pk=profile.course_level_id).first()
                 if owned:
                     return owned
         return qs.first()
 
     def get_filter_queryset(self, timetable):
-        section = self._get_selected_section()
-        if section is None:
+        course_level = self._get_selected_course_level()
+        if course_level is None:
             return TimetableSlot.objects.none()
         return _get_base_slot_queryset(timetable).filter(
-            class_session__section=section
+            class_session__course_level=course_level
         )
 
     def get_selector_context(self):
-        section = self._get_selected_section()
+        course_level = self._get_selected_course_level()
         return {
-            'selected_section': section,
-            'filter_label': section.name if section else 'No section selected',
-            'all_sections': self._section_queryset(),
+            'selected_course_level': course_level,
+            'filter_label': (
+                course_level.display_name if course_level else 'No course level selected'
+            ),
+            'all_course_levels': self._course_level_queryset(),
         }
 
 
@@ -991,14 +995,14 @@ class MoveSlotView(RoleRequiredMixin, View):
             return JsonResponse({'ok': False, 'error': 'Target room is not available.'}, status=400)
 
         schedule_input = load_schedule_input(
-            timetable.semester_id,
+            timetable.session_id,
             school_id=_school_id_for_request(request),
         )
         activity = schedule_input.activities_by_id.get(slot.class_session_id)
         if activity is None:
             return JsonResponse({
                 'ok': False,
-                'error': 'This class session is not part of the timetable semester.',
+                'error': 'This class session is not part of the timetable session.',
             }, status=400)
 
         existing_slots = list(
@@ -1108,7 +1112,7 @@ class ValidateBatchView(RoleRequiredMixin, View):
 
         try:
             schedule_input = load_schedule_input(
-                timetable.semester_id,
+                timetable.session_id,
                 school_id=_school_id_for_request(request),
             )
         except ValueError as exc:
@@ -1213,7 +1217,7 @@ class PublishChangeSetView(RoleRequiredMixin, View):
                     slot.save(update_fields=['timeslot', 'room', 'teacher', 'is_locked', 'is_manual'])
 
                 schedule_input = load_schedule_input(
-                    timetable.semester_id,
+                    timetable.session_id,
                     school_id=_school_id_for_request(request),
                 )
                 updated_slots = list(TimetableSlot.objects.filter(timetable=timetable))
@@ -1288,14 +1292,14 @@ def _redirect_name_for_scope(scope):
     return {
         'teacher': 'timetable:teacher_view',
         'room': 'timetable:room_view',
-        'section': 'timetable:section_view',
+        'course_level': 'timetable:course_level_view',
         'full': 'timetable:reports',
     }.get(scope, 'timetable:teacher_view')
 
 
 class ExportTimetableView(LoginRequiredMixin, View):
     """Download a filtered timetable as PDF or XLSX."""
-    valid_scopes = {'teacher', 'room', 'section', 'full'}
+    valid_scopes = {'teacher', 'room', 'course_level', 'full'}
     valid_formats = {'pdf', 'xlsx'}
 
     def get(self, request, scope, file_format, *args, **kwargs):
@@ -1305,15 +1309,15 @@ class ExportTimetableView(LoginRequiredMixin, View):
         if scope == 'full' and not request.user.is_admin():
             raise PermissionDenied
 
-        semester = _get_selected_semester(request)
-        timetable, _all_timetables = _get_timetable(request, semester)
-        if not semester or not timetable:
+        session = _get_selected_session(request)
+        timetable, _all_timetables = _get_timetable(request, session)
+        if not session or not timetable:
             messages.warning(request, "Generate a timetable before exporting.")
             return redirect(_redirect_name_for_scope(scope))
 
         slots, title, label = self._resolve_slots(request, timetable, scope)
         timeslots = _active_timeslots()
-        subtitle = f"{timetable.semester.name} - v{timetable.version} ({timetable.get_status_display()})"
+        subtitle = f"{timetable.session.name} - v{timetable.version} ({timetable.get_status_display()})"
         if label:
             subtitle = f"{subtitle} - {label}"
 
@@ -1370,17 +1374,17 @@ class ExportTimetableView(LoginRequiredMixin, View):
                 room.name,
             )
 
-        if scope == 'section':
-            section = self._selected_section(request, timetable.semester)
-            if section is None:
-                return [], "Section Timetable", "No section selected"
+        if scope == 'course_level':
+            course_level = self._selected_course_level(request, timetable.session)
+            if course_level is None:
+                return [], "Course Level Timetable", "No course level selected"
             return (
-                list(base_qs.filter(class_session__section=section)),
-                "Section Timetable",
-                section.name,
+                list(base_qs.filter(class_session__course_level=course_level)),
+                "Course Level Timetable",
+                course_level.display_name,
             )
 
-        return list(base_qs), "Full Institution Timetable", "All teachers, rooms, and sections"
+        return list(base_qs), "Full Institution Timetable", "All teachers, rooms, and course levels"
 
     def _selected_teacher(self, request):
         department = _get_selected_department(request)
@@ -1400,7 +1404,7 @@ class ExportTimetableView(LoginRequiredMixin, View):
             return qs.first()
         if profile is None:
             return None
-        if department is None or profile.department_id == department.pk:
+        if department is None or profile.departments.filter(pk=department.pk).exists():
             return profile
         return qs.first()
 
@@ -1414,18 +1418,18 @@ class ExportTimetableView(LoginRequiredMixin, View):
                 return selected
         return qs.first()
 
-    def _selected_section(self, request, semester):
+    def _selected_course_level(self, request, session):
         department = _get_selected_department(request)
-        qs = _sections_for_filters(request, semester=semester, department=department)
-        section_id = request.GET.get('section_id')
-        if section_id:
-            selected = qs.filter(pk=section_id).first()
+        qs = _course_levels_for_filters(request, session=session, department=department)
+        course_level_id = request.GET.get('course_level_id')
+        if course_level_id:
+            selected = qs.filter(pk=course_level_id).first()
             if selected:
                 return selected
         if request.user.is_class_rep():
             profile = getattr(request.user, 'class_rep_profile', None)
             if profile and profile.is_active:
-                owned = qs.filter(pk=profile.section_id).first()
+                owned = qs.filter(pk=profile.course_level_id).first()
                 if owned:
                     return owned
         return qs.first()
@@ -1440,10 +1444,10 @@ class ReportsView(RoleRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        semester = _get_active_semester(self.request)
-        timetable, all_timetables = _get_timetable(self.request, semester)
+        session = _get_active_session(self.request)
+        timetable, all_timetables = _get_timetable(self.request, session)
 
-        ctx['semester'] = semester
+        ctx['session'] = session
         ctx['timetable'] = timetable
         ctx['all_timetables'] = all_timetables
         ctx['export_querystring'] = self.request.GET.urlencode()
@@ -1461,7 +1465,7 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         timeslot_count = TimeSlot.objects.filter(is_active=True).count()
         teacher_workloads = self._teacher_workloads(slots)
         room_utilization = self._room_utilization(slots, timeslot_count)
-        soft_penalties, total_penalty = _soft_penalty_rows(timetable, semester, slots)
+        soft_penalties, total_penalty = _soft_penalty_rows(timetable, session, slots)
 
         ctx['teacher_workloads'] = teacher_workloads
         ctx['room_utilization'] = room_utilization
@@ -1471,12 +1475,9 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         # Constraint-satisfaction summary. Hard constraints are guaranteed by the
         # engine (a timetable only exists if they are all satisfied); soft rules
         # may carry penalties.
-        from django.db.models import Q
         from scheduling.models import Constraint
 
-        active_constraints = Constraint.objects.filter(is_active=True).filter(
-            Q(semester=semester) | Q(semester__isnull=True)
-        )
+        active_constraints = Constraint.objects.filter(is_active=True, session=session)
         hard_count = active_constraints.filter(is_hard=True).count()
         soft_count = active_constraints.filter(is_hard=False).count()
         violated_soft = len(soft_penalties)
@@ -1502,11 +1503,11 @@ class ReportsView(RoleRequiredMixin, TemplateView):
             row = rows.setdefault(slot.teacher_id, {
                 'teacher': slot.teacher,
                 'periods': 0,
-                'sections': set(),
+                'course_levels': set(),
                 'subjects': set(),
             })
             row['periods'] += 1
-            row['sections'].add(slot.class_session.section.name)
+            row['course_levels'].add(str(slot.class_session.course_level))
             row['subjects'].add(slot.class_session.subject.code)
 
         return sorted(rows.values(), key=lambda row: row['periods'], reverse=True)
@@ -1530,8 +1531,8 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         return sorted(rows.values(), key=lambda row: row['utilization'], reverse=True)
 
 
-def _soft_penalty_rows(timetable, semester, slots=None):
-    if not timetable or not semester:
+def _soft_penalty_rows(timetable, session, slots=None):
+    if not timetable or not session:
         return [], 0
 
     if slots is None:
@@ -1558,7 +1559,7 @@ def _soft_penalty_rows(timetable, semester, slots=None):
 
     soft_constraints = list(
         Constraint.objects.filter(
-            semester=semester,
+            session=session,
             is_active=True,
             is_hard=False,
         ).select_related('teacher')
@@ -1642,10 +1643,10 @@ class ConflictReportView(RoleRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        semester = _get_active_semester(self.request)
-        timetable, all_timetables = _get_timetable(self.request, semester)
+        session = _get_active_session(self.request)
+        timetable, all_timetables = _get_timetable(self.request, session)
 
-        ctx['semester'] = semester
+        ctx['session'] = session
         ctx['timetable'] = timetable
         ctx['all_timetables'] = all_timetables
 
@@ -1695,10 +1696,10 @@ class ConflictReportView(RoleRequiredMixin, TemplateView):
             teacher_day_periods[key].sort()
 
         # ── Evaluate soft constraints ──
-        if semester:
+        if session:
             soft_constraints = list(
                 Constraint.objects.filter(
-                    semester=semester,
+                    session=session,
                     is_active=True,
                     is_hard=False,
                 ).select_related('teacher')

@@ -83,12 +83,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const targetByType = {
         TEACHER: ["tgt-teacher"],
-        SECTION: ["tgt-section"],
+        COURSE_LEVEL: ["tgt-course-level"],
         ROOM: ["tgt-room"],
         SUBJECT: ["tgt-subject"],
         GLOBAL: [],
     };
-    const allTargetDivs = ["tgt-teacher", "tgt-section", "tgt-room", "tgt-subject"];
+    const allTargetDivs = ["tgt-teacher", "tgt-course-level", "tgt-room", "tgt-subject"];
 
     const show = (id, visible) => {
         const el = document.getElementById(id);

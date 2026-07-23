@@ -15,7 +15,7 @@ class SchedulingAdminCRUDMixin(SchoolFormMixin, RoleRequiredMixin):
     def get_queryset(self):
         qs = super().get_queryset()
         if self.model is Constraint:
-            qs = filter_by_school(qs, self.request, 'semester__school')
+            qs = filter_by_school(qs, self.request, 'session__school')
         return qs
 
 # -- TimeSlot (institution-wide calendar grid; not school-scoped) --

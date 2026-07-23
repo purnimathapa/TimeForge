@@ -48,6 +48,30 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     if (bestMatch) bestMatch.classList.add('active');
 
+    // Dismissible flash messages (works even if Bootstrap Alert JS fails to bind)
+    document.querySelectorAll(".messages-container .alert").forEach(function (alertEl) {
+        const closeBtn = alertEl.querySelector("[data-bs-dismiss='alert'], .btn-close");
+        if (!closeBtn) return;
+        closeBtn.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            alertEl.classList.remove("show");
+            alertEl.addEventListener(
+                "transitionend",
+                function () {
+                    alertEl.remove();
+                },
+                { once: true }
+            );
+            // Fallback if there is no CSS transition
+            window.setTimeout(function () {
+                if (alertEl.isConnected) {
+                    alertEl.remove();
+                }
+            }, 200);
+        });
+    });
+
     // Show a loading spinner on submit buttons inside data-loading-form forms
     document.querySelectorAll('[data-loading-form]').forEach(form => {
         form.addEventListener('submit', function () {

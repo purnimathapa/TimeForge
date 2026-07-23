@@ -6,11 +6,11 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from academics.models import Section, Subject, TeacherProfile, ClassSession
+from academics.models import Course, Subject, TeacherProfile, ClassSession
 from accounts.models import User
-from core.models import Room, Semester, Department
+from core.models import Room, Session, Department
 from core.testing import get_test_school
-from scheduling.models import Constraint, TimeSlot
+from scheduling.models import TimeSlot
 from timetable.models import (
     DraftChangeSet,
     Timetable,
@@ -24,9 +24,8 @@ from timetable.views import _get_timetable
 class GetTimetableResolutionTests(TestCase):
     def setUp(self):
         self.school = get_test_school(code="f26g")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26G",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -40,11 +39,11 @@ class GetTimetableResolutionTests(TestCase):
             school=self.school,
         )
         self.draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         self.published = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
         )
 
@@ -57,7 +56,7 @@ class GetTimetableResolutionTests(TestCase):
 
     def test_non_admin_does_not_return_draft(self):
         request = self._request_for(self.teacher)
-        timetable, _all = _get_timetable(request, self.semester)
+        timetable, _all = _get_timetable(request, self.session)
 
         self.assertEqual(timetable, self.published)
 
@@ -66,14 +65,14 @@ class GetTimetableResolutionTests(TestCase):
 
         request = RequestFactory().get("/", {"timetable_id": self.draft.pk})
         request.user = self.teacher
-        timetable, _all = _get_timetable(request, self.semester)
+        timetable, _all = _get_timetable(request, self.session)
 
         self.assertIsNone(timetable)
 
     def test_admin_falls_back_to_draft_when_no_published(self):
         self.published.delete()
         request = self._request_for(self.admin)
-        timetable, _all = _get_timetable(request, self.semester)
+        timetable, _all = _get_timetable(request, self.session)
 
         self.assertEqual(timetable, self.draft)
 
@@ -127,9 +126,8 @@ class TimetablePermissionTests(TestCase):
 class TimetablePublishWorkflowTests(TestCase):
     def setUp(self):
         self.school = get_test_school(code="f26p")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26P",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -145,19 +143,18 @@ class TimetablePublishWorkflowTests(TestCase):
         TeacherProfile.objects.create(user=self.teacher, employee_id="PT1")
 
         self.department = Department.objects.create(name="CS", code="CS", school=self.school)
-        self.section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
+        self.course_level = self.course.levels.get(level=1)
         self.subject = Subject.objects.create(
             name="Math",
             code="MATH101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject.departments.add(self.department)
         self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.timeslot = TimeSlot.objects.create(
             day_of_week=1,
@@ -168,7 +165,8 @@ class TimetablePublishWorkflowTests(TestCase):
         )
         self.teacher_profile = TeacherProfile.objects.get(user=self.teacher)
         self.class_session = ClassSession.objects.create(
-            section=self.section,
+            session=self.session,
+            course_level=self.course_level,
             subject=self.subject,
             teacher=self.teacher_profile,
             periods_per_week=1,
@@ -185,12 +183,12 @@ class TimetablePublishWorkflowTests(TestCase):
 
     def test_publish_draft_archives_previous_published(self):
         old_published = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
             version=1,
         )
         draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
             version=2,
         )
@@ -211,12 +209,12 @@ class TimetablePublishWorkflowTests(TestCase):
 
     def test_teacher_grid_uses_published_not_draft(self):
         published = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
             version=1,
         )
         draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
             version=2,
         )
@@ -242,7 +240,7 @@ class TimetablePublishWorkflowTests(TestCase):
 
     def test_teacher_cannot_see_draft_only_timetable(self):
         draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         self._add_slot(draft)
@@ -254,7 +252,7 @@ class TimetablePublishWorkflowTests(TestCase):
 
     def test_non_admin_cannot_publish(self):
         draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
 
@@ -267,7 +265,7 @@ class TimetablePublishWorkflowTests(TestCase):
 
     def test_discard_draft_archives_timetable(self):
         draft = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         slot = self._add_slot(draft)
@@ -305,9 +303,8 @@ class TeacherReadAccessTests(TestCase):
             employee_id="VT002",
         )
 
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26R",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -315,19 +312,18 @@ class TeacherReadAccessTests(TestCase):
         )
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
-        self.section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
+        self.course_level = self.course.levels.get(level=1)
         self.subject = Subject.objects.create(
             name="Math",
             code="MATH101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject.departments.add(self.department)
         self.timeslot = TimeSlot.objects.create(
             day_of_week=1,
             period_number=1,
@@ -336,13 +332,14 @@ class TeacherReadAccessTests(TestCase):
             is_active=True,
         )
         self.class_session = ClassSession.objects.create(
-            section=self.section,
+            session=self.session,
+            course_level=self.course_level,
             subject=self.subject,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.timetable = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
         )
         self.slot = TimetableSlot.objects.create(
@@ -355,7 +352,7 @@ class TeacherReadAccessTests(TestCase):
         self.client.login(username="viewer_teacher", password="password")
 
     def test_teacher_can_browse_institution_grid_views(self):
-        for url_name in ('timetable:teacher_view', 'timetable:room_view', 'timetable:section_view'):
+        for url_name in ('timetable:teacher_view', 'timetable:room_view', 'timetable:course_level_view'):
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200, msg=url_name)
 
@@ -374,7 +371,7 @@ class TeacherReadAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_teacher_can_export_room_and_section(self):
+    def test_teacher_can_export_room_and_course_level(self):
         room_export = self.client.get(
             reverse('timetable:export', kwargs={'scope': 'room', 'file_format': 'pdf'}),
             {'room_id': self.room.pk},
@@ -382,13 +379,13 @@ class TeacherReadAccessTests(TestCase):
         self.assertEqual(room_export.status_code, 200)
         self.assertEqual(room_export['Content-Type'], 'application/pdf')
 
-        section_export = self.client.get(
-            reverse('timetable:export', kwargs={'scope': 'section', 'file_format': 'xlsx'}),
-            {'section_id': self.section.pk},
+        course_level_export = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'course_level', 'file_format': 'xlsx'}),
+            {'course_level_id': self.course_level.pk},
         )
-        self.assertEqual(section_export.status_code, 200)
+        self.assertEqual(course_level_export.status_code, 200)
         self.assertEqual(
-            section_export['Content-Type'],
+            course_level_export['Content-Type'],
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
 
@@ -412,10 +409,11 @@ class TeacherReadAccessTests(TestCase):
             name="Physics",
             code="PHYS999",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        other_subject.departments.add(self.department)
         other_session = ClassSession.objects.create(
-            section=self.section,
+            session=self.session,
+            course_level=self.course_level,
             subject=other_subject,
             teacher=other,
             periods_per_week=1,
@@ -466,7 +464,7 @@ class TeacherReadAccessTests(TestCase):
 
     def test_teacher_version_selector_lists_published_only(self):
         Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         response = self.client.get(reverse('timetable:room_view'))
@@ -479,29 +477,26 @@ class ClassRepReadAccessTests(TestCase):
         from academics.models import ClassRepProfile
 
         self.school = get_test_school(code="f26cr2")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26CR2",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
             school=self.school,
         )
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
-        self.section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
-        self.other_section = Section.objects.create(
-            name="10B",
-            year=1,
-            section_label="B",
-            semester=self.semester,
+        self.course_level = self.course.levels.get(level=1)
+        self.other_course = Course.objects.create(
+            name="Bachelor of Information Technology",
+            code="BIT",
             department=self.department,
         )
+        self.other_course_level = self.other_course.levels.get(level=1)
         self.cr_user = User.objects.create_user(
             username="classrep",
             password="password",
@@ -510,7 +505,7 @@ class ClassRepReadAccessTests(TestCase):
         )
         self.class_rep_profile = ClassRepProfile.objects.create(
             user=self.cr_user,
-            section=self.section,
+            course_level=self.course_level,
         )
         self.teacher_user = User.objects.create_user(
             username="teacher1",
@@ -527,8 +522,8 @@ class ClassRepReadAccessTests(TestCase):
             name="Math",
             code="MATH101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject.departments.add(self.department)
         self.timeslot = TimeSlot.objects.create(
             day_of_week=1,
             period_number=1,
@@ -537,13 +532,14 @@ class ClassRepReadAccessTests(TestCase):
             is_active=True,
         )
         self.class_session = ClassSession.objects.create(
-            section=self.section,
+            session=self.session,
+            course_level=self.course_level,
             subject=self.subject,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.timetable = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
         )
         self.slot = TimetableSlot.objects.create(
@@ -556,14 +552,14 @@ class ClassRepReadAccessTests(TestCase):
         self.client.login(username="classrep", password="password")
 
     def test_class_rep_can_browse_read_only_grids(self):
-        for url_name in ('timetable:teacher_view', 'timetable:room_view', 'timetable:section_view'):
+        for url_name in ('timetable:teacher_view', 'timetable:room_view', 'timetable:course_level_view'):
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200, msg=url_name)
 
-    def test_class_rep_section_view_defaults_to_assigned_section(self):
-        response = self.client.get(reverse('timetable:section_view'))
+    def test_class_rep_course_level_view_defaults_to_assigned_course_level(self):
+        response = self.client.get(reverse('timetable:course_level_view'))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['selected_section'], self.section)
+        self.assertEqual(response.context['selected_course_level'], self.course_level)
 
     def test_class_rep_cannot_move_slots(self):
         response = self.client.post(
@@ -573,17 +569,17 @@ class ClassRepReadAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_class_rep_can_export_room_and_section(self):
+    def test_class_rep_can_export_room_and_course_level(self):
         room_export = self.client.get(
             reverse('timetable:export', kwargs={'scope': 'room', 'file_format': 'pdf'}),
             {'room_id': self.room.pk},
         )
         self.assertEqual(room_export.status_code, 200)
 
-        section_export = self.client.get(
-            reverse('timetable:export', kwargs={'scope': 'section', 'file_format': 'xlsx'}),
+        course_level_export = self.client.get(
+            reverse('timetable:export', kwargs={'scope': 'course_level', 'file_format': 'xlsx'}),
         )
-        self.assertEqual(section_export.status_code, 200)
+        self.assertEqual(course_level_export.status_code, 200)
 
     def test_class_rep_cannot_export_full_institution(self):
         response = self.client.get(
@@ -605,9 +601,8 @@ class BatchEditorTests(TestCase):
             employee_id="BT001",
         )
         self.school = get_test_school(code="f26b")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26B",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -616,32 +611,30 @@ class BatchEditorTests(TestCase):
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE", school=self.school)
-        self.section1 = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course1 = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
-        self.section2 = Section.objects.create(
-            name="10B",
-            year=1,
-            section_label="B",
-            semester=self.semester,
+        self.course2 = Course.objects.create(
+            name="Bachelor of Information Technology",
+            code="BIT",
             department=self.department,
         )
+        self.course_level1 = self.course1.levels.get(level=1)
+        self.course_level2 = self.course2.levels.get(level=1)
         self.subject1 = Subject.objects.create(
             name="Math",
             code="MATH101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject1.departments.add(self.department)
         self.subject2 = Subject.objects.create(
             name="Physics",
             code="PHY101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject2.departments.add(self.department)
         self.timeslot1 = TimeSlot.objects.create(
             day_of_week=1,
             period_number=1,
@@ -664,19 +657,21 @@ class BatchEditorTests(TestCase):
             is_active=True,
         )
         self.session1 = ClassSession.objects.create(
-            section=self.section1,
+            session=self.session,
+            course_level=self.course_level1,
             subject=self.subject1,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.session2 = ClassSession.objects.create(
-            section=self.section2,
+            session=self.session,
+            course_level=self.course_level2,
             subject=self.subject2,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.timetable = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         self.slot1 = TimetableSlot.objects.create(
@@ -829,9 +824,8 @@ class TimetableIntegrationTests(TestCase):
 
         self.school = get_test_school(code="f26t")
         # 1. Seed minimal required data
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026 Test",
-            code="F26T",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -839,9 +833,17 @@ class TimetableIntegrationTests(TestCase):
         )
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
         self.room = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
-        self.subject = Subject.objects.create(name="Math", code="MATH101", lecture_hours_per_week=1, department=self.department)
-        self.section = Section.objects.create(name="10A", year=1, section_label="A", semester=self.semester, department=self.department)
-        
+        self.subject = Subject.objects.create(
+            name="Math", code="MATH101", lecture_hours_per_week=1,
+        )
+        self.subject.departments.add(self.department)
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
+            department=self.department,
+        )
+        self.course_level = self.course.levels.get(level=1)
+
         self.teacher_user = User.objects.create_user(username="teacher1", password="password", role=User.RoleChoices.TEACHER)
         self.teacher = TeacherProfile.objects.create(user=self.teacher_user, employee_id="T1")
 
@@ -849,7 +851,8 @@ class TimetableIntegrationTests(TestCase):
         self.timeslot_2 = TimeSlot.objects.create(day_of_week=1, period_number=2, start_time="10:00", end_time="11:00", is_active=True)
 
         self.class_session = ClassSession.objects.create(
-            section=self.section,
+            session=self.session,
+            course_level=self.course_level,
             subject=self.subject,
             teacher=self.teacher,
             periods_per_week=1
@@ -857,9 +860,9 @@ class TimetableIntegrationTests(TestCase):
 
     def test_full_flow(self):
         # 2. Simulate generation flow
-        call_command('generate_timetable', '--semester', self.semester.code)
+        call_command('generate_timetable', '--session', self.session.name)
 
-        timetable = Timetable.objects.get(semester=self.semester)
+        timetable = Timetable.objects.get(session=self.session)
         self.assertEqual(timetable.status, Timetable.Status.DRAFT)
         
         slot = TimetableSlot.objects.filter(timetable=timetable).first()
@@ -898,9 +901,8 @@ class TimetableIntegrationTests(TestCase):
 class TimetableEditLockTests(TestCase):
     def setUp(self):
         self.school = get_test_school(code="f26l")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26L",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -941,32 +943,30 @@ class TimetableEditLockTests(TestCase):
         self.department = Department.objects.create(name="CS", code="CS", school=self.school)
         self.room1 = Room.objects.create(name="101A", capacity=30, room_type="LECTURE", school=self.school)
         self.room2 = Room.objects.create(name="102A", capacity=30, room_type="LECTURE", school=self.school)
-        self.section1 = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course1 = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
-        self.section2 = Section.objects.create(
-            name="10B",
-            year=1,
-            section_label="B",
-            semester=self.semester,
+        self.course2 = Course.objects.create(
+            name="Bachelor of Information Technology",
+            code="BIT",
             department=self.department,
         )
+        self.course_level1 = self.course1.levels.get(level=1)
+        self.course_level2 = self.course2.levels.get(level=1)
         self.subject1 = Subject.objects.create(
             name="Math",
             code="MATH101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject1.departments.add(self.department)
         self.subject2 = Subject.objects.create(
             name="Physics",
             code="PHY101",
             lecture_hours_per_week=1,
-            department=self.department,
         )
+        self.subject2.departments.add(self.department)
         self.timeslot1 = TimeSlot.objects.create(
             day_of_week=1,
             period_number=1,
@@ -982,19 +982,21 @@ class TimetableEditLockTests(TestCase):
             is_active=True,
         )
         self.session1 = ClassSession.objects.create(
-            section=self.section1,
+            session=self.session,
+            course_level=self.course_level1,
             subject=self.subject1,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.session2 = ClassSession.objects.create(
-            section=self.section2,
+            session=self.session,
+            course_level=self.course_level2,
             subject=self.subject2,
             teacher=self.teacher,
             periods_per_week=1,
         )
         self.timetable = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
         self.slot1 = TimetableSlot.objects.create(
@@ -1073,7 +1075,8 @@ class TimetableEditLockTests(TestCase):
 
     def test_teacher_double_booking_rejected_at_db_level(self):
         session3 = ClassSession.objects.create(
-            section=self.section2,
+            session=self.session,
+            course_level=self.course_level2,
             subject=self.subject2,
             teacher=self.teacher,
             periods_per_week=1,

@@ -6,15 +6,15 @@ These mirror the Django models but carry ZERO Django dependency — they are
 plain data containers that can be constructed in unit tests without a database.
 
 Mapping to DB models (for maintainers):
-  RoomData        ← core.Room
-  TeacherData     ← academics.TeacherProfile + scheduling.TeacherAvailability
-  SectionData     ← academics.Section
-  ActivityData    ← academics.ClassSession
-  TimeSlotData    ← scheduling.TimeSlot
-  ConstraintData  ← scheduling.Constraint
-  ScheduleInput   ← all of the above, assembled for one semester
-  Placement       ← one (activity, timeslot, room) assignment (unsaved result)
-  ScheduleResult  ← the engine's full output
+  RoomData          ← core.Room
+  TeacherData       ← academics.TeacherProfile + scheduling.TeacherAvailability
+  CourseLevelData   ← academics.CourseLevel
+  ActivityData      ← academics.ClassSession
+  TimeSlotData      ← scheduling.TimeSlot
+  ConstraintData    ← scheduling.Constraint
+  ScheduleInput     ← all of the above, assembled for one session
+  Placement         ← one (activity, timeslot, room) assignment (unsaved result)
+  ScheduleResult    ← the engine's full output
 """
 
 from __future__ import annotations
@@ -46,11 +46,13 @@ class TeacherData:
 
 
 @dataclass(frozen=True)
-class SectionData:
-    """A student section/cohort."""
+class CourseLevelData:
+    """A course-level cohort (e.g. BECE · Sem 3)."""
     id: int
     name: str
     student_count: int = 0
+    course_id: Optional[int] = None
+    level: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,7 @@ class ActivityData:
     """
     id: int
     subject_name: str
-    section_id: int
+    course_level_id: int
     periods_per_week: int
     teacher_id: Optional[int] = None           # None → no teacher assigned yet (unassigned)
     room_type_required: Optional[str] = None   # None → any room type is acceptable
@@ -101,7 +103,7 @@ class ConstraintData:
 
     constraint_type values that the engine understands:
       MAX_DAILY_HOURS  — uses max_daily_periods
-      NO_ADJACENT_GAPS — soft: penalises gaps in a teacher's or section's day
+      NO_ADJACENT_GAPS — soft: penalises gaps in a teacher's or course level's day
       MAX_CONSECUTIVE_PERIODS — uses max_consecutive_periods
       PREFERRED_TEACHING_TIME — uses preferred_days, preferred_period_start/end
       ROOM_TYPE_REQUIRED — enforced via ActivityData.room_type_required (hard)
@@ -116,7 +118,7 @@ class ConstraintData:
     is_hard: bool
     weight: int                         # penalty per violation for soft constraints
     teacher_id: Optional[int] = None    # None → applies globally or to non-teacher scope
-    section_id: Optional[int] = None
+    course_level_id: Optional[int] = None
     max_daily_periods: Optional[int] = None
     max_consecutive_periods: Optional[int] = None
     preferred_days: frozenset = frozenset()
@@ -138,7 +140,7 @@ class ScheduleInput:
     timeslots: list                  # list[TimeSlotData], sorted by day then period
     rooms: list                      # list[RoomData]
     teachers: list                   # list[TeacherData]
-    sections: list                   # list[SectionData]
+    course_levels: list              # list[CourseLevelData]
     activities: list                 # list[ActivityData]
     constraints: list                # list[ConstraintData]
 
@@ -146,14 +148,14 @@ class ScheduleInput:
     timeslots_by_id: dict = field(default_factory=dict, init=False)
     rooms_by_id: dict = field(default_factory=dict, init=False)
     teachers_by_id: dict = field(default_factory=dict, init=False)
-    sections_by_id: dict = field(default_factory=dict, init=False)
+    course_levels_by_id: dict = field(default_factory=dict, init=False)
     activities_by_id: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self):
         self.timeslots_by_id = {ts.id: ts for ts in self.timeslots}
         self.rooms_by_id = {r.id: r for r in self.rooms}
         self.teachers_by_id = {t.id: t for t in self.teachers}
-        self.sections_by_id = {s.id: s for s in self.sections}
+        self.course_levels_by_id = {cl.id: cl for cl in self.course_levels}
         self.activities_by_id = {a.id: a for a in self.activities}
 
 

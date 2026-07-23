@@ -4,9 +4,9 @@ scheduling/engine/models_io.py
 ORM adapter — the ONLY file in scheduling/engine/ that may import Django models.
 
 Responsibilities:
-  1. load_schedule_input(semester_id)  → ScheduleInput
+  1. load_schedule_input(session_id)  → ScheduleInput
      Reads ClassSession, TimeSlot, TeacherAvailability, Constraint, Room
-     rows for the given semester and converts them into the engine's internal
+     rows for the given session and converts them into the engine's internal
      dataclasses.  The result is a fully self-contained ScheduleInput that
      can be passed to run_scheduler() without any further DB access.
 
@@ -31,10 +31,10 @@ from typing import Optional
 from .data_types import (
     ActivityData,
     ConstraintData,
+    CourseLevelData,
     RoomData,
     ScheduleInput,
     ScheduleResult,
-    SectionData,
     TeacherData,
     TimeSlotData,
 )
@@ -63,7 +63,7 @@ def _constraint_data_from_model(constraint) -> ConstraintData:
         is_hard=constraint.is_hard,
         weight=constraint.weight,
         teacher_id=constraint.teacher_id,
-        section_id=constraint.section_id,
+        course_level_id=constraint.course_level_id,
         max_daily_periods=constraint.max_daily_periods,
         max_consecutive_periods=constraint.max_consecutive_periods,
         preferred_days=preferred_days,
@@ -76,42 +76,42 @@ def _constraint_data_from_model(constraint) -> ConstraintData:
 # Public: ORM → ScheduleInput
 # ---------------------------------------------------------------------------
 
-def load_schedule_input(semester_id: int, school_id: int | None = None) -> ScheduleInput:
+def load_schedule_input(session_id: int, school_id: int | None = None) -> ScheduleInput:
     """
-    Load all data needed by the engine for a given semester and return a
+    Load all data needed by the engine for a given session and return a
     ScheduleInput populated with pure-Python dataclasses.
 
     Raises
     ------
     ValueError
-        If the semester does not exist, has no active timeslots, or does not
+        If the session does not exist, has no active timeslots, or does not
         belong to the provided school_id.
 
     Usage
     -----
     >>> from scheduling.engine.models_io import load_schedule_input
     >>> from scheduling.engine.algorithm import run_scheduler
-    >>> schedule_input = load_schedule_input(semester_id=1)
+    >>> schedule_input = load_schedule_input(session_id=1)
     >>> result = run_scheduler(schedule_input)
     """
     # Import Django models here (and only here) so that the rest of the engine
     # package is importable without a configured Django application.
-    from core.models import Room, Semester
-    from academics.models import ClassSession, TeacherProfile
+    from core.models import Room, Session
+    from academics.models import ClassSession, CourseLevel, TeacherProfile
     from scheduling.models import Constraint, TeacherAvailability, TimeSlot
 
-    # ---- Validate semester exists ----
+    # ---- Validate session exists ----
     try:
-        semester = Semester.objects.get(pk=semester_id)
-    except Semester.DoesNotExist:
-        raise ValueError(f"Semester with id={semester_id} does not exist.")
+        session = Session.objects.get(pk=session_id)
+    except Session.DoesNotExist:
+        raise ValueError(f"Session with id={session_id} does not exist.")
 
-    if school_id is not None and semester.school_id != school_id:
+    if school_id is not None and session.school_id != school_id:
         raise ValueError(
-            f"Semester with id={semester_id} does not belong to school id={school_id}."
+            f"Session with id={session_id} does not belong to school id={school_id}."
         )
 
-    logger.info("Loading schedule input for semester %r (id=%d)", semester.name, semester_id)
+    logger.info("Loading schedule input for session %r (id=%d)", session.name, session_id)
 
     # ---- TimeSlots ----
     db_slots = TimeSlot.objects.filter(is_active=True).order_by("day_of_week", "period_number")
@@ -142,27 +142,26 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
     ]
 
     # ---- Teachers + their unavailability ----
-    # Load all teachers who have at least one ClassSession in this semester.
-    # We determine semester membership via ClassSession → section → semester.
-    semester_sessions = ClassSession.objects.filter(
-        section__semester_id=semester_id,
-    ).select_related("teacher", "section", "subject")
+    # Session membership is via ClassSession.session.
+    session_class_sessions = ClassSession.objects.filter(
+        session_id=session_id,
+    ).select_related("teacher", "course_level", "course_level__course", "subject")
 
-    teacher_ids_in_semester = set(
-        s.teacher_id for s in semester_sessions if s.teacher_id is not None
+    teacher_ids_in_session = set(
+        s.teacher_id for s in session_class_sessions if s.teacher_id is not None
     )
 
     # Build unavailability map: teacher_id → frozenset of unavailable timeslot ids
-    unavailability: dict[int, set[int]] = {tid: set() for tid in teacher_ids_in_semester}
+    unavailability: dict[int, set[int]] = {tid: set() for tid in teacher_ids_in_session}
     db_avail = TeacherAvailability.objects.filter(
-        teacher_id__in=teacher_ids_in_semester,
+        teacher_id__in=teacher_ids_in_session,
         is_available=False,
     ).select_related("timeslot")
     for row in db_avail:
         unavailability.setdefault(row.teacher_id, set()).add(row.timeslot_id)
 
     db_teachers = TeacherProfile.objects.filter(
-        pk__in=teacher_ids_in_semester,
+        pk__in=teacher_ids_in_session,
         is_active=True,
     ).select_related("user")
 
@@ -178,27 +177,35 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
     # TeacherProfile.max_hours_per_week is stored for future weekly-limit enforcement;
     # the engine does not synthesize or evaluate weekly caps in this prompt.
 
-    # ---- Sections ----
-    from academics.models import Section
-    db_sections = Section.objects.filter(semester_id=semester_id, is_active=True)
-    sections = [
-        SectionData(id=s.id, name=s.name, student_count=s.student_count)
-        for s in db_sections
+    # ---- Course levels (cohorts referenced by this session's class sessions) ----
+    course_level_ids = {cs.course_level_id for cs in session_class_sessions}
+    db_course_levels = CourseLevel.objects.filter(
+        pk__in=course_level_ids,
+        is_active=True,
+    ).select_related("course")
+    course_levels = [
+        CourseLevelData(
+            id=cl.id,
+            name=str(cl),
+            student_count=cl.student_count,
+            course_id=cl.course_id,
+            level=cl.level,
+        )
+        for cl in db_course_levels
     ]
 
     # ---- Activities (ClassSessions) ----
     # Each ClassSession with periods_per_week=N will produce N Placement records;
     # ActivityData itself is a single record — expansion happens in the algorithm.
     activities = []
-    for cs in semester_sessions:
-        # Determine required room type (from subject's session type if any)
+    for cs in session_class_sessions:
         # Room type requirement is carried via Constraint rows; we check those below.
         # For now, ActivityData.room_type_required is None (constraints handle it).
         activities.append(
             ActivityData(
                 id=cs.id,
                 subject_name=cs.subject.name,
-                section_id=cs.section_id,
+                course_level_id=cs.course_level_id,
                 periods_per_week=cs.periods_per_week,
                 teacher_id=cs.teacher_id,
                 room_type_required=None,  # overridden below from Constraint rows
@@ -208,9 +215,9 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
     # ---- Apply ROOM_TYPE_REQUIRED constraints to activities ----
     # Look up hard ROOM_TYPE_REQUIRED constraints scoped to subjects
     db_constraints = Constraint.objects.filter(
-        semester_id=semester_id,
+        session_id=session_id,
         is_active=True,
-    ).select_related("teacher", "section", "subject", "room")
+    ).select_related("teacher", "course_level", "subject", "room")
 
     # Build subject→required_room_type map (from hard ROOM_TYPE_REQUIRED constraints)
     subject_room_type: dict[int, str] = {}
@@ -219,12 +226,12 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
             subject_room_type[c.subject_id] = c.required_room_type
 
     # Re-build activities with room_type_required populated
-    session_map = {cs.id: cs for cs in semester_sessions}
+    session_map = {cs.id: cs for cs in session_class_sessions}
     activities = [
         ActivityData(
             id=a.id,
             subject_name=a.subject_name,
-            section_id=a.section_id,
+            course_level_id=a.course_level_id,
             periods_per_week=a.periods_per_week,
             teacher_id=a.teacher_id,
             room_type_required=subject_room_type.get(session_map[a.id].subject_id),
@@ -259,11 +266,11 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
 
     logger.info(
         "Loaded schedule input: %d timeslots, %d rooms, %d teachers, "
-        "%d sections, %d activities, %d constraints",
+        "%d course levels, %d activities, %d constraints",
         len(timeslots),
         len(rooms),
         len(teachers),
-        len(sections),
+        len(course_levels),
         len(activities),
         len(constraints),
     )
@@ -272,7 +279,7 @@ def load_schedule_input(semester_id: int, school_id: int | None = None) -> Sched
         timeslots=timeslots,
         rooms=rooms,
         teachers=teachers,
-        sections=sections,
+        course_levels=course_levels,
         activities=activities,
         constraints=constraints,
     )

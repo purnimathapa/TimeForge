@@ -7,8 +7,8 @@ This document lists every Django app to be created for TimeForge and defines a s
 | App           | Package path   | One-sentence responsibility |
 |---------------|----------------|-----------------------------|
 | `accounts`    | `accounts/`    | Manages user registration, login, logout, and the custom User model with a role field for authorization across the system. |
-| `core`        | `core/`        | Owns shared organizational entities—departments, rooms, and semesters—that other apps reference but do not duplicate. |
-| `academics`   | `academics/`   | Models the teaching domain: subjects, student sections, teacher profiles, and which subjects each section must take in a given semester. |
+| `core`        | `core/`        | Owns shared organizational entities—departments, rooms, and sessions—that other apps reference but do not duplicate. |
+| `academics`   | `academics/`   | Models the teaching domain: subjects, courses (with levels 1–8), teacher profiles, and class sessions for a session. |
 | `scheduling`  | `scheduling/`  | Defines time slots, scheduling constraints, class sessions to be placed, and the standalone Python scheduling engine callable from views and management commands. |
 | `timetable`   | `timetable/`   | Stores generated timetables and their slot assignments, provides the manual editor, read-only views, and export endpoints. |
 | `dashboard`   | `dashboard/`   | Serves role-aware home pages and summary widgets that aggregate data from the other apps without owning domain models. |
@@ -18,9 +18,9 @@ This document lists every Django app to be created for TimeForge and defines a s
 | Entity / concern              | Owner app     |
 |-------------------------------|---------------|
 | User, role, auth views        | `accounts`    |
-| Department, Room, Semester    | `core`        |
-| Subject, Section, Teacher, TeacherSubject, SectionOffering | `academics` |
-| TimeSlot, Constraint, ClassSession, ScheduleRun | `scheduling` |
+| Department, Room, Session     | `core`        |
+| Subject, Course, CourseLevel, Teacher, ClassSession, ClassRep | `academics` |
+| TimeSlot, Constraint, ScheduleRun | `scheduling` |
 | Timetable, TimetableSlot      | `timetable`   |
 | Dashboard metrics (queries only) | `dashboard` |
 

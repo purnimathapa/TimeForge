@@ -1,44 +1,94 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from accounts.models import User
-from core.models import Department, Room, Semester
+from core.models import Department, Session
 from core.forms import SchoolScopedFormMixin
-from .models import Subject, Section, TeacherProfile, ClassRepProfile, ClassSession
+from .models import Subject, Course, CourseLevel, TeacherProfile, ClassRepProfile, ClassSession
 from scheduling.models import TeacherAvailability
 
 
+LEVEL_CHOICES = [(i, f'Semester {i}') for i in range(1, 9)]
+
+
+def _department_checkbox_field(*, required):
+    return forms.ModelMultipleChoiceField(
+        queryset=Department.objects.none(),
+        widget=forms.CheckboxSelectMultiple,
+        required=required,
+        label='Departments',
+        help_text='Select every department this record belongs to.',
+    )
+
+
+def _resolve_course_level(course, level):
+    """Return the CourseLevel for course+level, creating it if missing."""
+    if course is None or level is None:
+        return None
+    course_level, _ = CourseLevel.objects.get_or_create(
+        course=course,
+        level=level,
+        defaults={'is_active': True},
+    )
+    return course_level
+
+
 class SubjectForm(SchoolScopedFormMixin, forms.ModelForm):
+    departments = _department_checkbox_field(required=True)
+
     class Meta:
         model = Subject
-        fields = ['name', 'code', 'credit_hours', 'lecture_hours_per_week', 'lab_hours_per_week', 'description', 'department', 'is_active']
+        fields = [
+            'name', 'code', 'credit_hours', 'lecture_hours_per_week',
+            'lab_hours_per_week', 'description', 'departments', 'is_active',
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        qs = Department.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
+            qs = qs.filter(school=self.school)
+        self.fields['departments'].queryset = qs.order_by('name')
+
+    def clean_departments(self):
+        departments = self.cleaned_data.get('departments')
+        if not departments:
+            raise ValidationError('Select at least one department.')
+        school_ids = {dept.school_id for dept in departments}
+        if len(school_ids) > 1:
+            raise ValidationError('All selected departments must belong to the same school.')
+        return departments
+
+    def clean(self):
+        cleaned = super().clean()
+        code = cleaned.get('code')
+        departments = cleaned.get('departments')
+        if code and departments:
+            school_ids = {dept.school_id for dept in departments}
+            qs = Subject.objects.filter(
+                code=code,
+                departments__school_id__in=school_ids,
             )
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                self.add_error('code', 'A subject with this code already exists in this school.')
+        return cleaned
 
 
-class SectionForm(SchoolScopedFormMixin, forms.ModelForm):
+class CourseForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
-        model = Section
-        fields = ['name', 'year', 'section_label', 'student_count', 'department', 'semester', 'is_active']
+        model = Course
+        fields = ['name', 'code', 'department', 'is_active']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        qs = Department.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
-            self.fields['semester'].queryset = Semester.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
+            qs = qs.filter(school=self.school)
+        self.fields['department'].queryset = qs.order_by('name')
 
 
 class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
@@ -52,15 +102,19 @@ class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
         label="Employee ID",
         help_text="Assigned automatically and cannot be changed.",
     )
+    departments = _department_checkbox_field(required=False)
 
     field_order = [
         'first_name', 'last_name', 'employee_id', 'title', 'is_visiting',
-        'department', 'max_hours_per_day', 'max_hours_per_week', 'is_active',
+        'departments', 'max_hours_per_day', 'max_hours_per_week', 'is_active',
     ]
 
     class Meta:
         model = TeacherProfile
-        fields = ['title', 'is_visiting', 'department', 'max_hours_per_day', 'max_hours_per_week', 'is_active']
+        fields = [
+            'title', 'is_visiting', 'departments',
+            'max_hours_per_day', 'max_hours_per_week', 'is_active',
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -68,11 +122,18 @@ class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
             self.fields['first_name'].initial = self.instance.user.first_name
             self.fields['last_name'].initial = self.instance.user.last_name
             self.fields['employee_id'].initial = self.instance.employee_id
+        qs = Department.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
+            qs = qs.filter(school=self.school)
+        self.fields['departments'].queryset = qs.order_by('name')
+
+    def clean_departments(self):
+        departments = self.cleaned_data.get('departments')
+        if departments:
+            school_ids = {dept.school_id for dept in departments}
+            if len(school_ids) > 1:
+                raise ValidationError('All selected departments must belong to the same school.')
+        return departments
 
     def save(self, commit=True):
         profile = super().save(commit=False)
@@ -82,6 +143,7 @@ class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
         if commit:
             user.save()
             profile.save()
+            self.save_m2m()
         return profile
 
 
@@ -104,17 +166,14 @@ class TeacherCreationForm(UserCreationForm):
         initial=False,
         label="Visiting faculty",
     )
-    department = forms.ModelChoiceField(
-        queryset=Department.objects.none(),
-        required=False,
-    )
+    departments = _department_checkbox_field(required=False)
     max_hours_per_day = forms.IntegerField(min_value=1, initial=4)
     max_hours_per_week = forms.IntegerField(min_value=1, initial=20)
     is_active = forms.BooleanField(required=False, initial=True)
 
     field_order = [
         'first_name', 'last_name', 'username', 'email', 'password1', 'password2',
-        'title', 'is_visiting', 'department',
+        'title', 'is_visiting', 'departments',
         'max_hours_per_day', 'max_hours_per_week', 'is_active',
     ]
 
@@ -125,11 +184,18 @@ class TeacherCreationForm(UserCreationForm):
     def __init__(self, *args, school=None, **kwargs):
         self.school = school
         super().__init__(*args, **kwargs)
+        qs = Department.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
+            qs = qs.filter(school=self.school)
+        self.fields['departments'].queryset = qs.order_by('name')
+
+    def clean_departments(self):
+        departments = self.cleaned_data.get('departments')
+        if departments:
+            school_ids = {dept.school_id for dept in departments}
+            if len(school_ids) > 1:
+                raise ValidationError('All selected departments must belong to the same school.')
+        return departments
 
     def save(self, commit=True):
         with transaction.atomic():
@@ -144,11 +210,11 @@ class TeacherCreationForm(UserCreationForm):
                 employee_id=TeacherProfile.generate_employee_id(),
                 title=self.cleaned_data.get('title', ''),
                 is_visiting=self.cleaned_data.get('is_visiting', False),
-                department=self.cleaned_data.get('department'),
                 max_hours_per_day=self.cleaned_data['max_hours_per_day'],
                 max_hours_per_week=self.cleaned_data['max_hours_per_week'],
                 is_active=self.cleaned_data.get('is_active', True),
             )
+            profile.departments.set(self.cleaned_data.get('departments') or [])
         return profile
 
 
@@ -158,12 +224,23 @@ class ClassRepProfileForm(SchoolScopedFormMixin, forms.ModelForm):
     first_name = forms.CharField(max_length=150, required=False, label="First name")
     last_name = forms.CharField(max_length=150, required=False, label="Last name")
     email = forms.EmailField(required=False)
+    course = forms.ModelChoiceField(
+        queryset=Course.objects.none(),
+        label='Course',
+        help_text='The degree program this class representative represents.',
+    )
+    level = forms.TypedChoiceField(
+        choices=LEVEL_CHOICES,
+        coerce=int,
+        label='Level',
+        help_text='Semester / study level within the course (1–8).',
+    )
 
-    field_order = ['first_name', 'last_name', 'email', 'section', 'is_active']
+    field_order = ['first_name', 'last_name', 'email', 'course', 'level', 'is_active']
 
     class Meta:
         model = ClassRepProfile
-        fields = ['section', 'is_active']
+        fields = ['is_active']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -171,14 +248,25 @@ class ClassRepProfileForm(SchoolScopedFormMixin, forms.ModelForm):
             self.fields['first_name'].initial = self.instance.user.first_name
             self.fields['last_name'].initial = self.instance.user.last_name
             self.fields['email'].initial = self.instance.user.email
+        course_qs = Course.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['section'].queryset = Section.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
+            course_qs = course_qs.filter(department__school=self.school)
+        self.fields['course'].queryset = course_qs.order_by('name')
+        if self.instance and self.instance.pk and self.instance.course_level_id:
+            self.fields['course'].initial = self.instance.course_level.course_id
+            self.fields['level'].initial = self.instance.course_level.level
+
+    def clean(self):
+        cleaned = super().clean()
+        course = cleaned.get('course')
+        level = cleaned.get('level')
+        if course and level is not None:
+            cleaned['course_level'] = _resolve_course_level(course, level)
+        return cleaned
 
     def save(self, commit=True):
         profile = super().save(commit=False)
+        profile.course_level = self.cleaned_data['course_level']
         user = profile.user
         user.first_name = self.cleaned_data.get('first_name', '')
         user.last_name = self.cleaned_data.get('last_name', '')
@@ -195,15 +283,22 @@ class ClassRepCreationForm(UserCreationForm):
     first_name = forms.CharField(max_length=150, required=True, label="First name")
     last_name = forms.CharField(max_length=150, required=False, label="Last name")
     email = forms.EmailField(required=True)
-    section = forms.ModelChoiceField(
-        queryset=Section.objects.none(),
-        help_text="The section this class representative represents.",
+    course = forms.ModelChoiceField(
+        queryset=Course.objects.none(),
+        label='Course',
+        help_text='The degree program this class representative represents.',
+    )
+    level = forms.TypedChoiceField(
+        choices=LEVEL_CHOICES,
+        coerce=int,
+        label='Level',
+        help_text='Semester / study level within the course (1–8).',
     )
     is_active = forms.BooleanField(required=False, initial=True)
 
     field_order = [
         'first_name', 'last_name', 'username', 'email',
-        'password1', 'password2', 'section', 'is_active',
+        'password1', 'password2', 'course', 'level', 'is_active',
     ]
 
     class Meta(UserCreationForm.Meta):
@@ -213,11 +308,18 @@ class ClassRepCreationForm(UserCreationForm):
     def __init__(self, *args, school=None, **kwargs):
         self.school = school
         super().__init__(*args, **kwargs)
+        course_qs = Course.objects.filter(is_active=True)
         if self.school is not None:
-            self.fields['section'].queryset = Section.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
+            course_qs = course_qs.filter(department__school=self.school)
+        self.fields['course'].queryset = course_qs.order_by('name')
+
+    def clean(self):
+        cleaned = super().clean()
+        course = cleaned.get('course')
+        level = cleaned.get('level')
+        if course and level is not None:
+            cleaned['course_level'] = _resolve_course_level(course, level)
+        return cleaned
 
     def save(self, commit=True):
         with transaction.atomic():
@@ -228,32 +330,68 @@ class ClassRepCreationForm(UserCreationForm):
             user.save()
             profile = ClassRepProfile.objects.create(
                 user=user,
-                section=self.cleaned_data['section'],
+                course_level=self.cleaned_data['course_level'],
                 is_active=self.cleaned_data.get('is_active', True),
             )
         return profile
 
 
 class ClassSessionForm(SchoolScopedFormMixin, forms.ModelForm):
+    course = forms.ModelChoiceField(
+        queryset=Course.objects.none(),
+        label='Course',
+    )
+    level = forms.TypedChoiceField(
+        choices=LEVEL_CHOICES,
+        coerce=int,
+        label='Level',
+        help_text='Semester / study level within the course (1–8).',
+    )
+
     class Meta:
         model = ClassSession
-        fields = ['subject', 'teacher', 'section', 'periods_per_week']
+        fields = ['session', 'subject', 'teacher', 'periods_per_week']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # List all sessions for the school (not only active) so edits of past
+        # sessions still work; active sessions sort first.
+        session_qs = Session.objects.all()
+        subject_qs = Subject.objects.filter(is_active=True)
+        teacher_qs = TeacherProfile.objects.filter(is_active=True)
+        course_qs = Course.objects.filter(is_active=True)
+
         if self.school is not None:
-            self.fields['subject'].queryset = Subject.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
-            self.fields['section'].queryset = Section.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
-            self.fields['teacher'].queryset = TeacherProfile.objects.filter(
-                is_active=True,
-                user__school=self.school,
-            )
+            session_qs = session_qs.filter(school=self.school)
+            subject_qs = subject_qs.filter(departments__school=self.school).distinct()
+            teacher_qs = teacher_qs.filter(user__school=self.school)
+            course_qs = course_qs.filter(department__school=self.school)
+
+        self.fields['session'].queryset = session_qs.order_by('-is_active', '-start_date')
+        self.fields['subject'].queryset = subject_qs.order_by('code')
+        self.fields['teacher'].queryset = teacher_qs.select_related('user').order_by(
+            'user__first_name', 'user__last_name',
+        )
+        self.fields['course'].queryset = course_qs.order_by('name')
+
+        if self.instance and self.instance.pk and self.instance.course_level_id:
+            self.fields['course'].initial = self.instance.course_level.course_id
+            self.fields['level'].initial = self.instance.course_level.level
+
+    def clean(self):
+        cleaned = super().clean()
+        course = cleaned.get('course')
+        level = cleaned.get('level')
+        if course and level is not None:
+            cleaned['course_level'] = _resolve_course_level(course, level)
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.course_level = self.cleaned_data['course_level']
+        if commit:
+            instance.save()
+        return instance
 
 
 # For Teacher portal

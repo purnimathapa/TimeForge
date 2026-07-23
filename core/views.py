@@ -4,8 +4,8 @@ from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
 from core.mixins import SchoolFormMixin, SchoolScopedMixin, ProtectedDeleteMixin
-from .models import Department, Room, Semester
-from .forms import DepartmentForm, RoomForm, SemesterForm
+from .models import Department, Room, Session
+from .forms import DepartmentForm, RoomForm, SessionForm
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
@@ -90,24 +90,26 @@ class RoomDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
     success_url = reverse_lazy('core:room_list')
     success_message = "Room deleted successfully."
 
-# -- Semester --
-class SemesterListView(CoreAdminCRUDMixin, ListView):
-    model = Semester
+# -- Session --
+class SessionListView(CoreAdminCRUDMixin, ListView):
+    model = Session
+    template_name = 'core/session_list.html'
     
     def get_queryset(self):
         qs = super().get_queryset()
         q = self.request.GET.get('q')
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q))
+            qs = qs.filter(Q(name__icontains=q))
         return qs
 
-class SemesterCreateView(CoreAdminCRUDMixin, CreateView):
-    model = Semester
-    form_class = SemesterForm
-    success_url = reverse_lazy('core:semester_list')
+class SessionCreateView(CoreAdminCRUDMixin, CreateView):
+    model = Session
+    form_class = SessionForm
+    template_name = 'core/session_form.html'
+    success_url = reverse_lazy('core:session_list')
     
     def form_valid(self, form):
-        messages.success(self.request, "Semester created successfully.")
+        messages.success(self.request, "Session created successfully.")
         return super().form_valid(form)
 
     def form_invalid(self, form):
@@ -116,13 +118,14 @@ class SemesterCreateView(CoreAdminCRUDMixin, CreateView):
                 messages.error(self.request, f"{field}: {error}")
         return super().form_invalid(form)
 
-class SemesterUpdateView(CoreAdminCRUDMixin, UpdateView):
-    model = Semester
-    form_class = SemesterForm
-    success_url = reverse_lazy('core:semester_list')
+class SessionUpdateView(CoreAdminCRUDMixin, UpdateView):
+    model = Session
+    form_class = SessionForm
+    template_name = 'core/session_form.html'
+    success_url = reverse_lazy('core:session_list')
     
     def form_valid(self, form):
-        messages.success(self.request, "Semester updated successfully.")
+        messages.success(self.request, "Session updated successfully.")
         return super().form_valid(form)
 
     def form_invalid(self, form):
@@ -131,7 +134,8 @@ class SemesterUpdateView(CoreAdminCRUDMixin, UpdateView):
                 messages.error(self.request, f"{field}: {error}")
         return super().form_invalid(form)
 
-class SemesterDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
-    model = Semester
-    success_url = reverse_lazy('core:semester_list')
-    success_message = "Semester deleted successfully."
+class SessionDeleteView(ProtectedDeleteMixin, CoreAdminCRUDMixin, DeleteView):
+    model = Session
+    template_name = 'core/session_confirm_delete.html'
+    success_url = reverse_lazy('core:session_list')
+    success_message = "Session deleted successfully."

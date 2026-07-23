@@ -1,6 +1,6 @@
 from django.db import models
-from core.models import Department, Room, Semester
-from academics.models import TeacherProfile, Subject, Section
+from core.models import Department, Room, Session
+from academics.models import TeacherProfile, Subject, CourseLevel
 from django.core.exceptions import ValidationError
 
 class TimeSlot(models.Model):
@@ -53,10 +53,10 @@ class Constraint(models.Model):
 
     class TargetType(models.TextChoices):
         TEACHER = 'TEACHER', 'Teacher'
-        SECTION = 'SECTION', 'Section'
+        COURSE_LEVEL = 'COURSE_LEVEL', 'Course Level'
         ROOM = 'ROOM', 'Room'
         SUBJECT = 'SUBJECT', 'Subject'
-        GLOBAL = 'GLOBAL', 'Global / Semester'
+        GLOBAL = 'GLOBAL', 'Global / Session'
 
     name = models.CharField(max_length=150)
     constraint_type = models.CharField(max_length=50, choices=ConstraintType.choices)
@@ -65,12 +65,12 @@ class Constraint(models.Model):
     weight = models.PositiveIntegerField(default=10, help_text="Weight for soft constraints")
     
     # Nullable explicit FKs for targets
-    semester = models.ForeignKey(Semester, on_delete=models.CASCADE, related_name='constraints')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='constraints')
     department = models.ForeignKey(Department, on_delete=models.CASCADE, null=True, blank=True)
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, null=True, blank=True)
     room = models.ForeignKey(Room, on_delete=models.CASCADE, null=True, blank=True)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, null=True, blank=True)
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, null=True, blank=True)
+    course_level = models.ForeignKey(CourseLevel, on_delete=models.CASCADE, null=True, blank=True)
 
     # Structured Parameter Fields
     max_daily_periods = models.PositiveIntegerField(null=True, blank=True, help_text="Used for MAX_DAILY_HOURS")

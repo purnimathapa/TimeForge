@@ -44,15 +44,29 @@ def _form_accepts_school(form_class):
 class SchoolFormMixin:
     """Pass request.school into forms and assign it on direct-FK creates."""
 
+    def get_form_school(self):
+        """Tenant school for forms: request.school, else default for superusers."""
+        school = getattr(self.request, 'school', None)
+        if school is not None:
+            return school
+        user = self.request.user
+        if user.is_authenticated and getattr(user, 'is_superuser', False):
+            from core.models import School
+            return (
+                School.objects.filter(is_active=True).order_by('pk').first()
+                or School.objects.order_by('pk').first()
+            )
+        return None
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         form_class = self.get_form_class()
         if _form_accepts_school(form_class):
-            kwargs['school'] = getattr(self.request, 'school', None)
+            kwargs['school'] = self.get_form_school()
         return kwargs
 
     def form_valid(self, form):
-        school = getattr(self.request, 'school', None)
+        school = self.get_form_school()
         if school is not None and hasattr(form.instance, 'school_id') and form.instance.school_id is None:
             form.instance.school = school
         elif school is None and not self.request.user.is_superuser:

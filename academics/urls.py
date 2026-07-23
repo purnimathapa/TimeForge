@@ -9,10 +9,10 @@ urlpatterns = [
     path('subjects/<int:pk>/edit/', views.SubjectUpdateView.as_view(), name='subject_update'),
     path('subjects/<int:pk>/delete/', views.SubjectDeleteView.as_view(), name='subject_delete'),
 
-    path('sections/', views.SectionListView.as_view(), name='section_list'),
-    path('sections/create/', views.SectionCreateView.as_view(), name='section_create'),
-    path('sections/<int:pk>/edit/', views.SectionUpdateView.as_view(), name='section_update'),
-    path('sections/<int:pk>/delete/', views.SectionDeleteView.as_view(), name='section_delete'),
+    path('courses/', views.CourseListView.as_view(), name='course_list'),
+    path('courses/create/', views.CourseCreateView.as_view(), name='course_create'),
+    path('courses/<int:pk>/edit/', views.CourseUpdateView.as_view(), name='course_update'),
+    path('courses/<int:pk>/delete/', views.CourseDeleteView.as_view(), name='course_delete'),
 
     path('teachers/', views.TeacherListView.as_view(), name='teacher_list'),
     path('teachers/create/', views.TeacherCreateView.as_view(), name='teacher_create'),

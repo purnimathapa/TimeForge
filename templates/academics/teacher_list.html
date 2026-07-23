@@ -36,7 +36,7 @@
                     </div>
                     <div class="d-flex flex-column gap-2">
                         {% if object.is_visiting %}<span class="entity-meta"><i data-lucide="plane"></i> Visiting faculty</span>{% endif %}
-                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department.name|default:"No department" }}</span>
+                        <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department_names }}</span>
                         <span class="entity-meta"><i data-lucide="clock"></i> Up to {{ object.max_hours_per_week }} hrs/week · {{ object.max_hours_per_day }} hrs/day</span>
                     </div>
                 </div>

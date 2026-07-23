@@ -1,0 +1,6 @@
+{% extends 'partials/base_form.html' %}
+
+{% block page_title %}{% if object %}Edit Session{% else %}Create Session{% endif %}{% endblock %}
+{% block page_subtitle %}{% if object %}Update the school-wide session dates.{% else %}Set the start and end dates for a new academic session.{% endif %}{% endblock %}
+
+{% block cancel_url %}{% url 'core:session_list' %}{% endblock %}

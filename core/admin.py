@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Department, Room, School, Semester
+from .models import Department, Room, School, Session
 
 
 @admin.register(School)
@@ -24,8 +24,8 @@ class RoomAdmin(admin.ModelAdmin):
     list_filter = ('room_type', 'is_active', 'school', 'department')
 
 
-@admin.register(Semester)
-class SemesterAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'school', 'start_date', 'end_date', 'is_active')
-    search_fields = ('name', 'code')
+@admin.register(Session)
+class SessionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'school', 'start_date', 'end_date', 'is_active')
+    search_fields = ('name',)
     list_filter = ('is_active', 'school')

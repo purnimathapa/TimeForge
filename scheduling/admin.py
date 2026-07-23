@@ -9,6 +9,6 @@ class TimeSlotAdmin(admin.ModelAdmin):
 
 @admin.register(Constraint)
 class ConstraintAdmin(admin.ModelAdmin):
-    list_display = ('name', 'constraint_type', 'target_type', 'is_hard', 'semester', 'is_active')
-    list_filter = ('constraint_type', 'target_type', 'is_hard', 'is_active', 'semester')
+    list_display = ('name', 'constraint_type', 'target_type', 'is_hard', 'session', 'is_active')
+    list_filter = ('constraint_type', 'target_type', 'is_hard', 'is_active', 'session')
     search_fields = ('name',)

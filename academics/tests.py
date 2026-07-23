@@ -2,9 +2,9 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
-from academics.models import Section, Subject, TeacherProfile, ClassRepProfile
+from academics.models import Course, Subject, TeacherProfile, ClassRepProfile
 from accounts.models import User
-from core.models import Department, Semester
+from core.models import Department, Session
 from core.testing import get_test_school
 from scheduling.models import TeacherAvailability, TimeSlot
 
@@ -44,9 +44,8 @@ class TeacherPortalViewTests(TestCase):
 class AcademicsModelTests(TestCase):
     def setUp(self):
         self.school = get_test_school(code="acad-f26")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -64,28 +63,34 @@ class AcademicsModelTests(TestCase):
             name="Mathematics",
             code="MATH101",
             lecture_hours_per_week=5,
-            department=self.department,
         )
+        subject.departments.add(self.department)
         self.assertEqual(subject.name, "Mathematics")
         self.assertEqual(subject.code, "MATH101")
+        self.assertIn(self.department, subject.departments.all())
 
-    def test_section_unique_per_semester(self):
-        Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+    def test_course_unique_code_per_department(self):
+        Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
 
         with self.assertRaises(IntegrityError):
-            Section.objects.create(
-                name="10A",
-                year=1,
-                section_label="A",
-                semester=self.semester,
+            Course.objects.create(
+                name="BE Computer Engineering Duplicate",
+                code="BE-CE",
                 department=self.department,
             )
+
+    def test_course_save_creates_levels(self):
+        course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
+            department=self.department,
+        )
+        levels = list(course.levels.order_by("level").values_list("level", flat=True))
+        self.assertEqual(levels, list(range(1, 9)))
 
     def test_teacher_profile_creation(self):
         teacher = TeacherProfile.objects.create(
@@ -113,9 +118,8 @@ class AcademicsModelTests(TestCase):
 class ClassRepProfileTests(TestCase):
     def setUp(self):
         self.school = get_test_school(code="acad-f26cr")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26CR",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -127,16 +131,15 @@ class ClassRepProfileTests(TestCase):
             role=User.RoleChoices.CLASS_REP,
         )
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
-        self.section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
+        self.course_level = self.course.levels.get(level=1)
 
-    def test_class_rep_profile_links_user_to_section(self):
-        profile = ClassRepProfile.objects.create(user=self.user, section=self.section)
+    def test_class_rep_profile_links_user_to_course_level(self):
+        profile = ClassRepProfile.objects.create(user=self.user, course_level=self.course_level)
         self.assertEqual(profile.user, self.user)
-        self.assertEqual(profile.section, self.section)
-        self.assertIn("10A", str(profile))
+        self.assertEqual(profile.course_level, self.course_level)
+        self.assertIn("BE-CE", str(profile))

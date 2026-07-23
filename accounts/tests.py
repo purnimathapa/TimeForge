@@ -36,30 +36,28 @@ class UserModelTests(TestCase):
 
 class ClassRepCreateViewTests(TestCase):
     def setUp(self):
-        from core.models import Department, Semester
-        from academics.models import Section
+        from core.models import Department, Session
+        from academics.models import Course
         from core.testing import get_test_school
 
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.school = get_test_school(code="acct-f26cr")
         self.admin.school = self.school
         self.admin.save(update_fields=['school'])
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26CR",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
             school=self.school,
         )
         self.department = Department.objects.create(name="Computer Science", code="CS", school=self.school)
-        self.section = Section.objects.create(
-            name="10A",
-            year=1,
-            section_label="A",
-            semester=self.semester,
+        self.course = Course.objects.create(
+            name="BE Computer Engineering",
+            code="BE-CE",
             department=self.department,
         )
+        self.course_level = self.course.levels.get(level=1)
         self.url = reverse("academics:class_rep_create")
         self.valid_payload = {
             "username": "classrep1",
@@ -68,7 +66,8 @@ class ClassRepCreateViewTests(TestCase):
             "last_name": "Rep",
             "password1": "ComplexPass123!",
             "password2": "ComplexPass123!",
-            "section": self.section.pk,
+            "course": self.course.pk,
+            "level": 1,
             "is_active": True,
         }
 
@@ -83,7 +82,7 @@ class ClassRepCreateViewTests(TestCase):
         self.assertEqual(user.role, User.RoleChoices.CLASS_REP)
         self.assertTrue(user.is_class_rep())
         profile = ClassRepProfile.objects.get(user=user)
-        self.assertEqual(profile.section, self.section)
+        self.assertEqual(profile.course_level, self.course_level)
 
     def test_teacher_cannot_create_class_rep(self):
         User.objects.create_user(

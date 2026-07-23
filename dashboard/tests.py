@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import User
-from core.models import Department, Semester
+from core.models import Department, Session
 from core.testing import get_test_school
 from timetable.models import Timetable
 
@@ -11,9 +11,8 @@ class AdminDashboardTimetableStateTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.school = get_test_school(code="dash-f26")
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -30,7 +29,7 @@ class AdminDashboardTimetableStateTests(TestCase):
 
     def test_admin_dashboard_shows_timetable_summary_when_present(self):
         timetable = Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
             penalty_score=12,
         )
@@ -55,9 +54,8 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
             role=User.RoleChoices.TEACHER,
             school=self.school,
         )
-        self.semester = Semester.objects.create(
+        self.session = Session.objects.create(
             name="Fall 2026",
-            code="F26T",
             start_date="2026-08-01",
             end_date="2026-12-15",
             is_active=True,
@@ -67,7 +65,7 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
 
     def test_teacher_dashboard_ignores_draft_timetable(self):
         Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.DRAFT,
         )
 
@@ -80,7 +78,7 @@ class TeacherDashboardPublishedOnlyTests(TestCase):
 
     def test_teacher_dashboard_detects_published_timetable(self):
         Timetable.objects.create(
-            semester=self.semester,
+            session=self.session,
             status=Timetable.Status.PUBLISHED,
         )
 

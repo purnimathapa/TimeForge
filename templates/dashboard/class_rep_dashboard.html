@@ -12,12 +12,12 @@
             <h1 class="page-title h2 mb-1" id="greetingTitle">Welcome back, {{ user.get_full_name|default:user.get_username }}</h1>
             <p class="text-muted mb-0">
                 <i data-lucide="calendar" class="icon-sm"></i> {% now "l, F j, Y" %}
-                {% if section %}<span class="divider-dot">·</span><i data-lucide="users" class="icon-sm"></i> {{ section.name }}{% endif %}
+                {% if course_level %}<span class="divider-dot">·</span><i data-lucide="users" class="icon-sm"></i> {{ course_level.display_name }}{% endif %}
             </p>
         </div>
         <div class="col-lg-5">
             <div class="d-flex flex-wrap justify-content-lg-end gap-2">
-                <a href="{% url 'timetable:section_view' %}" class="btn btn-outline-secondary"><i data-lucide="layout-grid" class="icon-sm"></i> Section Grid</a>
+                <a href="{% url 'timetable:course_level_view' %}" class="btn btn-outline-secondary"><i data-lucide="layout-grid" class="icon-sm"></i> Course Grid</a>
                 <a href="{% url 'timetable:my_routine' %}" class="btn btn-primary"><i data-lucide="calendar-days" class="icon-sm"></i> My Routine</a>
             </div>
         </div>
@@ -29,8 +29,8 @@
             <span class="empty-state-icon mb-3"><i data-lucide="calendar-off"></i></span>
             <h4 class="mt-2 mb-1">No timetable available</h4>
             <p class="text-muted mx-auto mb-0" style="max-width: 520px;">
-                The administration has not published a timetable for this semester yet. Once published, your
-                section schedule will appear here.
+                The administration has not published a timetable for this session yet. Once published, your
+                course schedule will appear here.
             </p>
         </div>
     </div>
@@ -70,7 +70,7 @@
             <div class="card shadow-sm h-100">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <span class="d-flex align-items-center gap-2"><i data-lucide="clock" style="color: var(--tf-accent);"></i> Today’s Classes <span class="text-muted fw-normal">· {{ today_weekday }}</span></span>
-                    <a href="{% url 'timetable:section_view' %}" class="btn btn-sm btn-outline-secondary">Section grid <i data-lucide="arrow-right" class="icon-sm"></i></a>
+                    <a href="{% url 'timetable:course_level_view' %}" class="btn btn-sm btn-outline-secondary">Course grid <i data-lucide="arrow-right" class="icon-sm"></i></a>
                 </div>
                 <div class="card-body">
                     {% if today_schedule %}

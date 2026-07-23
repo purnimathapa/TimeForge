@@ -9,8 +9,8 @@
             <h1 class="h3 mb-1">
                 <i class="bi bi-clipboard-data me-2"></i>Timetable Reports
             </h1>
-            {% if semester %}
-                <p class="text-muted mb-0">{{ semester.name }}{% if timetable %} · v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
+            {% if session %}
+                <p class="text-muted mb-0">{{ session.name }}{% if timetable %} · v{{ timetable.version }} ({{ timetable.get_status_display }}){% endif %}</p>
             {% endif %}
         </div>
         <div class="col-md-5 text-md-end mt-2 mt-md-0">
@@ -32,12 +32,12 @@
         </div>
     </div>
 
-    {% if not semester %}
+    {% if not session %}
     <div class="card shadow-sm">
         <div class="card-body text-center py-5">
             <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
-            <h5 class="text-muted">No Active Semester</h5>
-            <p class="text-muted mb-0">Please set an active semester before viewing reports.</p>
+            <h5 class="text-muted">No Active Session</h5>
+            <p class="text-muted mb-0">Please set an active session before viewing reports.</p>
         </div>
     </div>
     {% elif not timetable %}
@@ -45,7 +45,7 @@
         <div class="card-body text-center py-5">
             <i class="bi bi-calendar-x fs-1 text-muted d-block mb-3"></i>
             <h5 class="text-muted">No Timetable Generated Yet</h5>
-            <p class="text-muted mb-0">Generate a timetable for <strong>{{ semester.name }}</strong> before viewing reports.</p>
+            <p class="text-muted mb-0">Generate a timetable for <strong>{{ session.name }}</strong> before viewing reports.</p>
         </div>
     </div>
     {% else %}
@@ -130,7 +130,7 @@
                         <th>Teacher</th>
                         <th class="text-end">Periods</th>
                         <th>Subjects</th>
-                        <th>Sections</th>
+                        <th>Course levels</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -139,7 +139,7 @@
                         <td>{{ row.teacher }}</td>
                         <td class="text-end fw-semibold">{{ row.periods }}</td>
                         <td>{{ row.subjects|join:", " }}</td>
-                        <td>{{ row.sections|join:", " }}</td>
+                        <td>{{ row.course_levels|join:", " }}</td>
                     </tr>
                     {% empty %}
                     <tr><td colspan="4" class="text-muted text-center py-4">No teacher workload data available.</td></tr>

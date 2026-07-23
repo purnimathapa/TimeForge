@@ -20,7 +20,7 @@
                 <div class="card-body">
                     <p><strong>Name:</strong> {{ teacher.user.get_full_name }}</p>
                     <p><strong>Title:</strong> {{ teacher.title }}</p>
-                    <p><strong>Department:</strong> {{ teacher.department.name|default:"-" }}</p>
+                    <p><strong>Departments:</strong> {{ teacher.department_names }}</p>
                     <p><strong>Employee ID:</strong> {{ teacher.employee_id }}</p>
                 </div>
             </div>

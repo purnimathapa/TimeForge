@@ -3,8 +3,8 @@ from django import forms
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Div, Field, Fieldset, Layout
 
-from academics.models import Section, Subject, TeacherProfile
-from core.models import Department, Room, Semester
+from academics.models import CourseLevel, Subject, TeacherProfile
+from core.models import Department, Room, Session
 from core.forms import SchoolScopedFormMixin
 from .models import TimeSlot, Constraint
 
@@ -50,7 +50,7 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
         model = Constraint
         fields = [
             'name', 'constraint_type', 'target_type', 'is_hard', 'weight',
-            'semester', 'department', 'teacher', 'room', 'subject', 'section',
+            'session', 'department', 'teacher', 'room', 'subject', 'course_level',
             'max_daily_periods', 'max_consecutive_periods', 'required_room_type',
             'custom_parameters', 'is_active',
         ]
@@ -71,31 +71,34 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        session_qs = Session.objects.all()
+        department_qs = Department.objects.filter(is_active=True)
+        teacher_qs = TeacherProfile.objects.filter(is_active=True)
+        room_qs = Room.objects.filter(is_active=True)
+        subject_qs = Subject.objects.filter(is_active=True)
+        course_level_qs = CourseLevel.objects.filter(
+            is_active=True,
+            course__is_active=True,
+        ).select_related('course')
+
         if self.school is not None:
-            self.fields['semester'].queryset = Semester.objects.filter(
-                is_active=True,
-                school=self.school,
+            session_qs = session_qs.filter(school=self.school)
+            department_qs = department_qs.filter(school=self.school)
+            teacher_qs = teacher_qs.filter(user__school=self.school)
+            room_qs = room_qs.filter(school=self.school)
+            subject_qs = subject_qs.filter(departments__school=self.school).distinct()
+            course_level_qs = course_level_qs.filter(
+                course__department__school=self.school,
             )
-            self.fields['department'].queryset = Department.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
-            self.fields['teacher'].queryset = TeacherProfile.objects.filter(
-                is_active=True,
-                user__school=self.school,
-            )
-            self.fields['room'].queryset = Room.objects.filter(
-                is_active=True,
-                school=self.school,
-            )
-            self.fields['subject'].queryset = Subject.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
-            self.fields['section'].queryset = Section.objects.filter(
-                is_active=True,
-                department__school=self.school,
-            )
+
+        self.fields['session'].queryset = session_qs.order_by('-is_active', '-start_date')
+        self.fields['department'].queryset = department_qs.order_by('name')
+        self.fields['teacher'].queryset = teacher_qs.select_related('user')
+        self.fields['room'].queryset = room_qs.order_by('name')
+        self.fields['subject'].queryset = subject_qs.order_by('code')
+        self.fields['course_level'].queryset = course_level_qs.order_by(
+            'course__name', 'level',
+        )
 
         # Pre-fill the friendly Preferred Teaching Time inputs when editing.
         instance = getattr(self, 'instance', None)
@@ -123,10 +126,10 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
             ),
             Fieldset(
                 "Applies to",
-                "semester",
+                "session",
                 "target_type",
                 Div("teacher", css_id="tgt-teacher"),
-                Div("section", css_id="tgt-section"),
+                Div("course_level", css_id="tgt-course-level"),
                 Div("room", css_id="tgt-room"),
                 Div("subject", css_id="tgt-subject"),
                 Div("department", css_id="tgt-department"),

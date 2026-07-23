@@ -33,7 +33,7 @@ Design rules:
   - Displacement is shallow (depth=1): we displace one conflicting placement,
     not chains.  This matches §3.4.1 and avoids infinite recursion.
   - Room assignment is greedy smallest-fit: among valid rooms, pick the one
-    with the smallest capacity that still fits the section, to leave larger
+    with the smallest capacity that still fits the course level, to leave larger
     rooms for activities that need them.
   - Before returning success, the hard-constraint audit is called;
     an internal bug that violates a hard constraint raises AssertionError
@@ -352,7 +352,7 @@ def _find_displaceable(
 
         # Is this placement in a slot where target_activity could potentially go?
         # We check if removing it would free up something for target_activity.
-        # Heuristic: any placement that shares a teacher, section, or is simply
+        # Heuristic: any placement that shares a teacher, course level, or is simply
         # occupying a slot the target_activity might want.
         slot = schedule_input.timeslots_by_id.get(p.timeslot_id)
         if slot is None:
@@ -367,8 +367,8 @@ def _find_displaceable(
         ):
             is_candidate = True
 
-        # Same section conflict (section double-booking)
-        if placed_act.section_id == target_activity.section_id:
+        # Same course level conflict (course level double-booking)
+        if placed_act.course_level_id == target_activity.course_level_id:
             is_candidate = True
 
         # Same room type needed — removing might free a compatible room in that slot

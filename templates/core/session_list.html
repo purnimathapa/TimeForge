@@ -1,12 +1,11 @@
 {% extends 'partials/base_list.html' %}
 
-{% block page_title %}Semesters{% endblock %}
+{% block page_title %}Sessions{% endblock %}
 
-{% block create_url %}{% url 'core:semester_create' %}{% endblock %}
+{% block create_url %}{% url 'core:session_create' %}{% endblock %}
 
 {% block table_headers %}
     <th>Name</th>
-    <th>Code</th>
     <th>Start Date</th>
     <th>End Date</th>
     <th>Status</th>
@@ -14,7 +13,6 @@
 
 {% block table_row %}
     <td>{{ object.name }}</td>
-    <td>{{ object.code }}</td>
     <td>{{ object.start_date|date:"M d, Y" }}</td>
     <td>{{ object.end_date|date:"M d, Y" }}</td>
     <td>
@@ -25,9 +23,9 @@
         {% endif %}
     </td>
     <td class="text-end">
-        <a href="{% url 'core:semester_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-        <a href="{% url 'core:semester_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+        <a href="{% url 'core:session_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+        <a href="{% url 'core:session_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
     </td>
 {% endblock %}
 
-{% block empty_message %}No semesters found.{% endblock %}
+{% block empty_message %}No sessions found.{% endblock %}

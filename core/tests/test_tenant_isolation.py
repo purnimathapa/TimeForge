@@ -5,7 +5,7 @@ These tests are release-blockers for any multi-school deployment. They verify
 that School A staff never see School B data via lists, detail views, grids,
 exports, or JSON editor endpoints.
 
-Fixture note: School A has the active semester; School B's semester is inactive
+Fixture note: School A has the active session; School B's session is inactive
 so generate-timetable always targets School A for the School A admin.
 
 When CI is configured, run this module first:
@@ -21,8 +21,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import User
-from academics.models import ClassSession, Section, Subject, TeacherProfile
-from core.models import Department, Room, School, Semester
+from academics.models import ClassSession, Course, CourseLevel, Subject, TeacherProfile
+from core.models import Department, Room, School, Session
 from scheduling.models import TimeSlot
 from timetable.models import Timetable, TimetableSlot
 
@@ -38,8 +38,9 @@ class TenantDataset:
     teacher: TeacherProfile
     department: Department
     room: Room
-    semester: Semester
-    section: Section
+    session: Session
+    course: Course
+    course_level: CourseLevel
     subject: Subject
     class_session: ClassSession
     timeslot: TimeSlot
@@ -56,7 +57,7 @@ def build_tenant_dataset(
     label: str,
     school_code: str,
     school_name: str,
-    semester_active: bool,
+    session_active: bool,
     timeslot: TimeSlot,
 ) -> TenantDataset:
     """Create a minimal isolated dataset for one school."""
@@ -91,35 +92,36 @@ def build_tenant_dataset(
         room_type='LECTURE',
         school=school,
     )
-    semester = Semester.objects.create(
+    session = Session.objects.create(
         name=f'{label} Fall 2026',
-        code=f'SEM-{label}',
         start_date='2026-08-01',
         end_date='2026-12-15',
-        is_active=semester_active,
+        is_active=session_active,
         school=school,
     )
-    section = Section.objects.create(
-        name=f'{label} Section 10A',
-        year=1,
-        section_label='A',
-        semester=semester,
+    course = Course.objects.create(
+        name=f'{label} BE Computer Engineering',
+        code=f'BE-CE-{label}',
         department=department,
     )
+    course_level = course.levels.get(level=1)
+    course_level.student_count = 40
+    course_level.save(update_fields=['student_count'])
     subject = Subject.objects.create(
         name=f'{label} Mathematics',
         code=f'MATH-{label}',
         lecture_hours_per_week=1,
-        department=department,
     )
+    subject.departments.add(department)
     class_session = ClassSession.objects.create(
-        section=section,
+        session=session,
+        course_level=course_level,
         subject=subject,
         teacher=teacher,
         periods_per_week=1,
     )
     timetable = Timetable.objects.create(
-        semester=semester,
+        session=session,
         status=Timetable.Status.PUBLISHED,
     )
     slot = TimetableSlot.objects.create(
@@ -138,8 +140,9 @@ def build_tenant_dataset(
         teacher=teacher,
         department=department,
         room=room,
-        semester=semester,
-        section=section,
+        session=session,
+        course=course,
+        course_level=course_level,
         subject=subject,
         class_session=class_session,
         timeslot=timeslot,
@@ -149,7 +152,7 @@ def build_tenant_dataset(
 
 
 class TenantIsolationTestCase(TestCase):
-    """Shared two-school fixture: School A (active semester) and School B (inactive)."""
+    """Shared two-school fixture: School A (active session) and School B (inactive)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -165,14 +168,14 @@ class TenantIsolationTestCase(TestCase):
             label='A',
             school_code='school-a',
             school_name='School A',
-            semester_active=True,
+            session_active=True,
             timeslot=cls.shared_timeslot,
         )
         cls.school_b = build_tenant_dataset(
             label='B',
             school_code='school-b',
             school_name='School B',
-            semester_active=False,
+            session_active=False,
             timeslot=cls.shared_timeslot,
         )
 
@@ -252,10 +255,10 @@ class TenantGridIsolationTests(TenantIsolationTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.school_b.subject_code)
 
-    def test_section_grid_with_other_school_section_id_hides_their_slots(self):
+    def test_course_level_grid_with_other_school_course_level_id_hides_their_slots(self):
         response = self.client.get(
-            reverse('timetable:section_view'),
-            {'section_id': self.school_b.section.pk},
+            reverse('timetable:course_level_view'),
+            {'course_level_id': self.school_b.course_level.pk},
         )
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.school_b.subject_code)
@@ -270,10 +273,10 @@ class TenantExportIsolationTests(TenantIsolationTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertLess(len(response.content), 5000)
 
-    def test_section_export_with_other_school_section_id_is_empty(self):
+    def test_course_level_export_with_other_school_course_level_id_is_empty(self):
         response = self.client.get(
-            reverse('timetable:export', kwargs={'scope': 'section', 'file_format': 'xlsx'}),
-            {'section_id': self.school_b.section.pk},
+            reverse('timetable:export', kwargs={'scope': 'course_level', 'file_format': 'xlsx'}),
+            {'course_level_id': self.school_b.course_level.pk},
         )
         self.assertEqual(response.status_code, 200)
         self.assertLess(len(response.content), 8000)
@@ -293,7 +296,7 @@ class TenantEditorIsolationTests(TenantIsolationTestCase):
 
     def test_discard_other_school_draft_returns_404(self):
         draft = Timetable.objects.create(
-            semester=self.school_b.semester,
+            session=self.school_b.session,
             status=Timetable.Status.DRAFT,
         )
         response = self.client.post(
@@ -304,16 +307,16 @@ class TenantEditorIsolationTests(TenantIsolationTestCase):
 
 class TenantGenerateIsolationTests(TenantIsolationTestCase):
     def test_generate_does_not_create_timetable_for_other_school(self):
-        b_count_before = Timetable.objects.filter(semester=self.school_b.semester).count()
-        a_count_before = Timetable.objects.filter(semester=self.school_a.semester).count()
+        b_count_before = Timetable.objects.filter(session=self.school_b.session).count()
+        a_count_before = Timetable.objects.filter(session=self.school_a.session).count()
 
         response = self.client.post(reverse('timetable:generate'))
         self.assertEqual(response.status_code, 302)
 
-        b_count_after = Timetable.objects.filter(semester=self.school_b.semester).count()
+        b_count_after = Timetable.objects.filter(session=self.school_b.session).count()
         self.assertEqual(b_count_before, b_count_after)
         self.assertGreaterEqual(
-            Timetable.objects.filter(semester=self.school_a.semester).count(),
+            Timetable.objects.filter(session=self.school_a.session).count(),
             a_count_before,
         )
 

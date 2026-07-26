@@ -69,8 +69,8 @@
         <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small text-uppercase fw-semibold">Soft Penalty</div>
-                    <div class="display-6">{{ total_penalty }}</div>
+                    <div class="text-muted small text-uppercase fw-semibold">Soft conflicts</div>
+                    <div class="display-6">{{ soft_conflict_count }}</div>
                 </div>
             </div>
         </div>
@@ -112,7 +112,7 @@
                         <div class="progress-bar" style="width: {{ constraint_summary.satisfaction_rate }}%; background-color: var(--tf-primary);"></div>
                     </div>
                     <p class="text-muted small mb-0 mt-2">
-                        Hard constraints are guaranteed by the scheduling engine. A published timetable only exists when every hard rule is satisfied. Soft rules may carry penalties, listed below.
+                        Hard constraints are guaranteed by the scheduling engine. A published timetable only exists when every hard rule is satisfied. Soft conflicts are listed below.
                     </p>
                 </div>
             </div>
@@ -181,7 +181,7 @@
 
     <div class="card shadow-sm">
         <div class="card-header bg-white">
-            <h2 class="h5 mb-0"><i class="bi bi-shield-exclamation me-2"></i>Unresolved Soft-Constraint Penalties</h2>
+            <h2 class="h5 mb-0"><i class="bi bi-shield-exclamation me-2"></i>Unresolved soft conflicts</h2>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-striped align-middle mb-0">
@@ -191,20 +191,18 @@
                         <th>Teacher</th>
                         <th>Day</th>
                         <th>Detail</th>
-                        <th class="text-end">Penalty</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in soft_penalties %}
+                    {% for row in soft_conflicts %}
                     <tr>
                         <td><i class="bi {{ row.type_icon }} me-1"></i>{{ row.type }}</td>
                         <td>{{ row.teacher }}</td>
                         <td>{{ row.day }}</td>
                         <td>{{ row.detail }}</td>
-                        <td class="text-end fw-semibold">{{ row.penalty }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="5" class="text-muted text-center py-4">No unresolved soft-constraint penalties.</td></tr>
+                    <tr><td colspan="4" class="text-muted text-center py-4">No unresolved soft conflicts.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

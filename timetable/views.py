@@ -34,6 +34,7 @@ from core.models import Department, Room, Session
 from core.tenant import filter_by_school, school_filter
 from scheduling.engine.algorithm import run_scheduler
 from scheduling.engine.constraints import (
+    collect_soft_violations,
     compute_penalty,
     find_hard_violations,
     validate_single_placement,
@@ -185,7 +186,8 @@ def _get_timetable(request, session):
     if session is None:
         return None, Timetable.objects.none()
 
-    all_timetables = Timetable.objects.filter(session=session).order_by('-version')
+    # School-scoped versions for this session (Teacher / Room / Course Level share this).
+    all_timetables = _scoped_timetables(request).filter(session=session).order_by('-version')
 
     is_admin = request.user.is_authenticated and request.user.is_admin()
 
@@ -510,11 +512,17 @@ class BaseTimetableGridView(LoginRequiredMixin, TemplateView):
             ctx['days'] = days
             ctx['periods'] = periods
             ctx['slot_count'] = len(filtered_slots)
+            if session is not None:
+                soft_rows, _ = _soft_penalty_rows(timetable, session)
+                ctx['soft_conflict_count'] = len(soft_rows)
+            else:
+                ctx['soft_conflict_count'] = 0
         else:
             ctx['grid'] = {}
             ctx['days'] = []
             ctx['periods'] = []
             ctx['slot_count'] = 0
+            ctx['soft_conflict_count'] = 0
 
         # Let subclass inject selector-specific context
         ctx.update(self.get_selector_context())
@@ -565,9 +573,10 @@ class GenerateTimetableView(RoleRequiredMixin, View):
         result = run_scheduler(schedule_input, max_restarts=max_restarts)
 
         if not result.success:
-            detail = result.failure_reason or "The scheduler could not find a hard-feasible timetable."
-            if result.unplaced_activity_ids:
-                detail = f"{detail} Unplaced class sessions: {len(result.unplaced_activity_ids)}."
+            detail = result.failure_reason or (
+                "The scheduler could not find a hard-feasible timetable. "
+                "Check Constraints, teacher availability, rooms, and course shifts."
+            )
             messages.error(request, detail)
             return redirect('home')
 
@@ -591,8 +600,7 @@ class GenerateTimetableView(RoleRequiredMixin, View):
         messages.success(
             request,
             (
-                f"Timetable v{timetable.version} generated as a draft "
-                f"(penalty score: {timetable.penalty_score}). "
+                f"Timetable v{timetable.version} generated as a draft. "
                 "Review the draft, then publish when ready."
             ),
         )
@@ -1046,6 +1054,7 @@ class MoveSlotView(RoleRequiredMixin, View):
                 'error': 'The database rejected this move because it conflicts with an existing placement.',
             }, status=409)
 
+        soft_rows, _ = _soft_penalty_rows(timetable, timetable.session)
         return JsonResponse({
             'ok': True,
             'slot_id': slot.pk,
@@ -1054,7 +1063,7 @@ class MoveSlotView(RoleRequiredMixin, View):
             'target_room': slot.room_id,
             'is_locked': slot.is_locked,
             'is_manual': slot.is_manual,
-            'penalty_score': timetable.penalty_score,
+            'soft_conflict_count': len(soft_rows),
         })
 
 
@@ -1164,7 +1173,7 @@ class ValidateBatchView(RoleRequiredMixin, View):
             'ok': True,
             'is_valid': is_valid,
             'violations': violations,
-            'penalty_score': penalty,
+            'soft_conflict_count': 0 if penalty == 0 else 1,
             'change_set_id': change_set.pk,
         })
 
@@ -1236,10 +1245,11 @@ class PublishChangeSetView(RoleRequiredMixin, View):
 
         release_lock(timetable)
 
+        soft_rows, _ = _soft_penalty_rows(timetable, timetable.session)
         return JsonResponse({
             'ok': True,
             'change_set_id': change_set.pk,
-            'penalty_score': timetable.penalty_score,
+            'soft_conflict_count': len(soft_rows),
             'published_move_count': published_move_count,
         })
 
@@ -1456,8 +1466,8 @@ class ReportsView(RoleRequiredMixin, TemplateView):
             ctx.update({
                 'teacher_workloads': [],
                 'room_utilization': [],
-                'soft_penalties': [],
-                'total_penalty': 0,
+                'soft_conflicts': [],
+                'soft_conflict_count': 0,
             })
             return ctx
 
@@ -1465,22 +1475,22 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         timeslot_count = TimeSlot.objects.filter(is_active=True).count()
         teacher_workloads = self._teacher_workloads(slots)
         room_utilization = self._room_utilization(slots, timeslot_count)
-        soft_penalties, total_penalty = _soft_penalty_rows(timetable, session, slots)
+        soft_conflicts, _ = _soft_penalty_rows(timetable, session, slots)
 
         ctx['teacher_workloads'] = teacher_workloads
         ctx['room_utilization'] = room_utilization
-        ctx['soft_penalties'] = soft_penalties
-        ctx['total_penalty'] = total_penalty
+        ctx['soft_conflicts'] = soft_conflicts
+        ctx['soft_conflict_count'] = len(soft_conflicts)
 
         # Constraint-satisfaction summary. Hard constraints are guaranteed by the
         # engine (a timetable only exists if they are all satisfied); soft rules
-        # may carry penalties.
+        # may still be unmet.
         from scheduling.models import Constraint
 
         active_constraints = Constraint.objects.filter(is_active=True, session=session)
         hard_count = active_constraints.filter(is_hard=True).count()
         soft_count = active_constraints.filter(is_hard=False).count()
-        violated_soft = len(soft_penalties)
+        violated_soft = len(soft_conflicts)
         satisfied_soft = max(soft_count - violated_soft, 0)
         total_rules = hard_count + soft_count
         satisfied_rules = hard_count + satisfied_soft
@@ -1531,111 +1541,45 @@ class ReportsView(RoleRequiredMixin, TemplateView):
         return sorted(rows.values(), key=lambda row: row['utilization'], reverse=True)
 
 
-def _soft_penalty_rows(timetable, session, slots=None):
+def _soft_penalty_rows(timetable, session, slots=None, school_id=None):
+    """Soft conflicts via the same engine evaluator used during generation."""
     if not timetable or not session:
         return [], 0
 
     if slots is None:
         slots = list(_get_base_slot_queryset(timetable))
 
-    teacher_day_periods = defaultdict(list)
-    teacher_day_counts = defaultdict(int)
-    teacher_names = {}
+    try:
+        schedule_input = load_schedule_input(session.id, school_id=school_id)
+    except ValueError:
+        return [], 0
 
-    for slot in slots:
-        if slot.teacher_id is None:
-            continue
-        key = (slot.teacher_id, slot.timeslot.day_of_week)
-        teacher_day_periods[key].append(slot.timeslot.period_number)
-        teacher_day_counts[key] += 1
-        teacher_names[slot.teacher_id] = (
-            slot.teacher.user.get_full_name()
-            if slot.teacher and slot.teacher.user
-            else f"Teacher #{slot.teacher_id}"
-        )
-
-    for periods in teacher_day_periods.values():
-        periods.sort()
-
-    soft_constraints = list(
-        Constraint.objects.filter(
-            session=session,
-            is_active=True,
-            is_hard=False,
-        ).select_related('teacher')
-    )
-
-    day_names = {
-        1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
-        4: 'Thursday', 5: 'Friday',
-    }
-    violations = []
-    total_penalty = 0
-
-    for constraint in soft_constraints:
-        teacher_ids = (
-            [constraint.teacher_id]
-            if constraint.teacher_id is not None
-            else list(teacher_names.keys())
-        )
-
-        if constraint.constraint_type == 'MAX_DAILY_HOURS' and constraint.max_daily_periods is not None:
-            for teacher_id in teacher_ids:
-                for day in range(1, 6):
-                    count = teacher_day_counts.get((teacher_id, day), 0)
-                    excess = max(0, count - constraint.max_daily_periods)
-                    if excess:
-                        penalty = excess * constraint.weight
-                        total_penalty += penalty
-                        violations.append({
-                            'type': 'Max Daily Hours',
-                            'type_icon': 'bi-clock-history',
-                            'teacher': teacher_names.get(teacher_id, f'Teacher #{teacher_id}'),
-                            'teacher_id': teacher_id,
-                            'day': day_names.get(day, f'Day {day}'),
-                            'detail': f'{count} periods scheduled, soft limit is {constraint.max_daily_periods}',
-                            'excess': excess,
-                            'penalty': penalty,
-                            'weight': constraint.weight,
-                        })
-
-        elif constraint.constraint_type == 'NO_ADJACENT_GAPS':
-            for teacher_id in teacher_ids:
-                for day in range(1, 6):
-                    periods = teacher_day_periods.get((teacher_id, day), [])
-                    gaps = 0
-                    for index in range(1, len(periods)):
-                        if periods[index] - periods[index - 1] > 1:
-                            gaps += 1
-                    if gaps:
-                        penalty = gaps * constraint.weight
-                        total_penalty += penalty
-                        violations.append({
-                            'type': 'Schedule Gap',
-                            'type_icon': 'bi-exclamation-triangle',
-                            'teacher': teacher_names.get(teacher_id, f'Teacher #{teacher_id}'),
-                            'teacher_id': teacher_id,
-                            'day': day_names.get(day, f'Day {day}'),
-                            'detail': f'{gaps} gap(s) in periods {periods}',
-                            'excess': gaps,
-                            'penalty': penalty,
-                            'weight': constraint.weight,
-                        })
-
-    violations.sort(key=lambda row: row['penalty'], reverse=True)
-    return violations, total_penalty
+    soft_rows = collect_soft_violations(_slots_to_placements(slots), schedule_input)
+    violations = [
+        {
+            'type': row.type_label,
+            'type_icon': row.type_icon,
+            'teacher': row.teacher_name,
+            'teacher_id': row.teacher_id,
+            'day': row.day_label,
+            'detail': row.detail,
+            'excess': row.excess,
+            'penalty': row.penalty,
+        }
+        for row in soft_rows
+    ]
+    return violations, sum(row['penalty'] for row in violations)
 
 
 # ── Conflict Report View ──────────────────────────────────────────────────
 
 class ConflictReportView(RoleRequiredMixin, TemplateView):
     """
-    Admin-only view that surfaces soft-constraint violations as actionable
-    information — not just the penalty number from the engine, but a
-    per-teacher, per-day breakdown of what's causing penalties.
+    Admin-only view that surfaces soft-constraint violations as a
+    per-teacher, per-day breakdown.
 
-    Recomputes from stored TimetableSlot data + active Constraint records
-    so the report always reflects the current constraint configuration.
+    Uses the same engine soft evaluator as generation so every constraint
+    type is reported consistently.
     """
     allowed_roles = ['ADMIN']
     template_name = 'timetable/conflict_report.html'
@@ -1652,142 +1596,23 @@ class ConflictReportView(RoleRequiredMixin, TemplateView):
 
         if not timetable:
             ctx['violations'] = []
-            ctx['total_penalty'] = 0
-            ctx['stored_penalty'] = 0
+            ctx['violation_count'] = 0
+            ctx['conflict_level'] = 'none'
             return ctx
 
-        ctx['stored_penalty'] = timetable.penalty_score
-
-        # ── Load slots with full joins ──
-        slots = list(
-            _get_base_slot_queryset(timetable)
+        violations, _ = _soft_penalty_rows(
+            timetable,
+            session,
+            school_id=_school_id_for_request(self.request),
         )
-
-        # ── Build per-teacher, per-day aggregates ──
-        DAY_NAMES = {
-            1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
-            4: 'Thursday', 5: 'Friday',
-        }
-
-        # teacher_day_periods: (teacher_id, day) → sorted list of period numbers
-        teacher_day_periods = defaultdict(list)
-        # teacher_day_counts: (teacher_id, day) → count
-        teacher_day_counts = defaultdict(int)
-        # teacher names for display
-        teacher_names = {}
-
-        for slot in slots:
-            if slot.teacher_id is None:
-                continue
-            day = slot.timeslot.day_of_week
-            period = slot.timeslot.period_number
-            key = (slot.teacher_id, day)
-            teacher_day_periods[key].append(period)
-            teacher_day_counts[key] += 1
-            if slot.teacher_id not in teacher_names:
-                teacher_names[slot.teacher_id] = (
-                    slot.teacher.user.get_full_name()
-                    if slot.teacher and slot.teacher.user
-                    else f'Teacher #{slot.teacher_id}'
-                )
-
-        # Sort period lists for gap detection
-        for key in teacher_day_periods:
-            teacher_day_periods[key].sort()
-
-        # ── Evaluate soft constraints ──
-        if session:
-            soft_constraints = list(
-                Constraint.objects.filter(
-                    session=session,
-                    is_active=True,
-                    is_hard=False,
-                ).select_related('teacher')
-            )
-        else:
-            soft_constraints = []
-
-        violations = []
-        total_penalty = 0
-
-        for c in soft_constraints:
-            if c.constraint_type == 'MAX_DAILY_HOURS' and c.max_daily_periods is not None:
-                # Check per-teacher daily hour overages
-                if c.teacher_id is not None:
-                    # Teacher-specific constraint
-                    teacher_ids = [c.teacher_id]
-                else:
-                    # Global: applies to all teachers
-                    teacher_ids = list(teacher_names.keys())
-
-                for tid in teacher_ids:
-                    for day in range(1, 6):
-                        count = teacher_day_counts.get((tid, day), 0)
-                        excess = max(0, count - c.max_daily_periods)
-                        if excess > 0:
-                            penalty = excess * c.weight
-                            total_penalty += penalty
-                            violations.append({
-                                'type': 'Max Daily Hours',
-                                'type_icon': 'bi-clock-history',
-                                'teacher': teacher_names.get(tid, f'Teacher #{tid}'),
-                                'teacher_id': tid,
-                                'day': DAY_NAMES.get(day, f'Day {day}'),
-                                'detail': (
-                                    f'{count} periods scheduled, '
-                                    f'soft limit is {c.max_daily_periods}'
-                                ),
-                                'excess': excess,
-                                'penalty': penalty,
-                                'weight': c.weight,
-                            })
-
-            elif c.constraint_type == 'NO_ADJACENT_GAPS':
-                # Check per-teacher schedule gaps
-                if c.teacher_id is not None:
-                    teacher_ids = [c.teacher_id]
-                else:
-                    teacher_ids = list(teacher_names.keys())
-
-                for tid in teacher_ids:
-                    for day in range(1, 6):
-                        periods = teacher_day_periods.get((tid, day), [])
-                        if len(periods) <= 1:
-                            continue
-                        gaps = 0
-                        for i in range(1, len(periods)):
-                            if periods[i] - periods[i - 1] > 1:
-                                gaps += 1
-                        if gaps > 0:
-                            penalty = gaps * c.weight
-                            total_penalty += penalty
-                            violations.append({
-                                'type': 'Schedule Gap',
-                                'type_icon': 'bi-exclamation-triangle',
-                                'teacher': teacher_names.get(tid, f'Teacher #{tid}'),
-                                'teacher_id': tid,
-                                'day': DAY_NAMES.get(day, f'Day {day}'),
-                                'detail': (
-                                    f'{gaps} gap(s) in periods {periods}'
-                                ),
-                                'excess': gaps,
-                                'penalty': penalty,
-                                'weight': c.weight,
-                            })
-
-        # Sort violations by penalty descending for visibility
-        violations.sort(key=lambda v: v['penalty'], reverse=True)
-
         ctx['violations'] = violations
-        ctx['total_penalty'] = total_penalty
         ctx['violation_count'] = len(violations)
 
-        # Penalty severity classification
-        if total_penalty == 0:
-            ctx['penalty_level'] = 'none'
-        elif total_penalty <= 50:
-            ctx['penalty_level'] = 'low'
+        if not violations:
+            ctx['conflict_level'] = 'none'
+        elif len(violations) <= 5:
+            ctx['conflict_level'] = 'low'
         else:
-            ctx['penalty_level'] = 'high'
+            ctx['conflict_level'] = 'high'
 
         return ctx

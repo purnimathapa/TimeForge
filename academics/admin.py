@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Subject, Course, CourseLevel, TeacherProfile, ClassRepProfile, ClassSession
+from .models import (
+    Subject, Course, CourseLevel, CourseLevelOffering,
+    TeacherProfile, ClassRepProfile, ClassSession,
+)
 from scheduling.models import TeacherAvailability
 
 
@@ -23,6 +26,13 @@ class CourseLevelAdmin(admin.ModelAdmin):
     list_display = ('course', 'level', 'student_count', 'is_active')
     search_fields = ('course__code', 'course__name')
     list_filter = ('level', 'is_active', 'course__department')
+
+
+@admin.register(CourseLevelOffering)
+class CourseLevelOfferingAdmin(admin.ModelAdmin):
+    list_display = ('course_level', 'session', 'shift')
+    list_filter = ('shift', 'session', 'course_level__level')
+    search_fields = ('course_level__course__code', 'course_level__course__name')
 
 
 @admin.register(ClassSession)

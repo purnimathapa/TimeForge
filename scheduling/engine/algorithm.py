@@ -57,6 +57,7 @@ from .data_types import (
     ScheduleInput,
     ScheduleResult,
 )
+from .diagnostics import diagnose_infeasibility, format_diagnostic_message
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,10 @@ def run_scheduler(
         )
 
     rng = random.Random(seed)
+    best_placements: Optional[list[Placement]] = None
+    best_penalty: Optional[int] = None
+    farthest_progress = 0
+    first_stuck_activity_id: Optional[int] = None
 
     for restart_num in range(max_restarts):
         logger.debug("Scheduler restart %d/%d (seed=%d)", restart_num + 1, max_restarts, seed)
@@ -136,14 +141,15 @@ def run_scheduler(
         shuffled = list(expanded)
         rng.shuffle(shuffled)
 
-        result = _attempt_placement(
+        attempt = _attempt_placement(
             shuffled,
             schedule_input,
             retry_threshold,
             rng,
         )
 
-        if result is not None:
+        if attempt.placements is not None:
+            result = attempt.placements
             # Safety gate: verify no hard violations before declaring success
             violations = find_hard_violations(result, schedule_input)
             assert not violations, (
@@ -157,31 +163,52 @@ def run_scheduler(
                 len(result),
                 penalty,
             )
-            return ScheduleResult(
-                success=True,
-                placements=result,
-                penalty=penalty,
-                unplaced_activity_ids=[],
-                failure_reason="",
-            )
+            if best_penalty is None or penalty < best_penalty:
+                best_placements = result
+                best_penalty = penalty
+            # Perfect soft score — no need to keep searching.
+            if best_penalty == 0:
+                break
+        else:
+            if attempt.placed_count > farthest_progress:
+                farthest_progress = attempt.placed_count
+                first_stuck_activity_id = attempt.failed_activity_id
 
         # Prepare for next restart
         seed += 1
         rng = random.Random(seed)
         logger.debug("Restart %d failed, trying new seed %d", restart_num + 1, seed)
 
-    # All restarts exhausted
-    unplaced_ids = _collect_unplaced_ids(expanded, schedule_input)
+    if best_placements is not None:
+        return ScheduleResult(
+            success=True,
+            placements=best_placements,
+            penalty=best_penalty or 0,
+            unplaced_activity_ids=[],
+            failure_reason="",
+        )
+
+    # All restarts exhausted — explain why with concrete blockers.
+    report = diagnose_infeasibility(schedule_input)
+    if first_stuck_activity_id is not None:
+        stuck = schedule_input.activities_by_id.get(first_stuck_activity_id)
+        if stuck is not None:
+            from .diagnostics import describe_activity
+            report["summary"] += (
+                f" Furthest progress: {farthest_progress}/{len(expanded)} periods placed; "
+                f"often stuck on: {describe_activity(stuck, schedule_input)}."
+            )
+
+    blocked_ids = [row["activity_id"] for row in report["blocked_examples"]]
+    if not blocked_ids and first_stuck_activity_id is not None:
+        blocked_ids = [first_stuck_activity_id]
+
     return ScheduleResult(
         success=False,
         placements=[],
         penalty=0,
-        unplaced_activity_ids=unplaced_ids,
-        failure_reason=(
-            f"Could not place all activities after {max_restarts} restart(s). "
-            f"Unplaceable activity IDs: {unplaced_ids}. "
-            "Check teacher unavailability, room availability, and constraint settings."
-        ),
+        unplaced_activity_ids=blocked_ids or _collect_unplaced_ids(expanded, schedule_input),
+        failure_reason=format_diagnostic_message(report, max_restarts),
     )
 
 
@@ -189,18 +216,33 @@ def run_scheduler(
 # One placement attempt (one restart)
 # ---------------------------------------------------------------------------
 
+class _AttemptOutcome:
+    """Result of one restart attempt."""
+
+    __slots__ = ("placements", "placed_count", "failed_activity_id")
+
+    def __init__(
+        self,
+        placements: Optional[list[Placement]],
+        placed_count: int = 0,
+        failed_activity_id: Optional[int] = None,
+    ):
+        self.placements = placements
+        self.placed_count = placed_count
+        self.failed_activity_id = failed_activity_id
+
+
 def _attempt_placement(
     shuffled_items: list[tuple[ActivityData, int]],
     schedule_input: ScheduleInput,
     retry_threshold: int,
     rng: random.Random,
-) -> Optional[list[Placement]]:
+) -> _AttemptOutcome:
     """
     Try to place every item in `shuffled_items` using greedy placement with
     shallow displacement.
 
-    Returns a complete list of Placement objects on success, or None if any
-    item could not be placed within `retry_threshold` displacement attempts.
+    Returns an _AttemptOutcome with placements on success, or failure metadata.
     """
     placements: list[Placement] = []
 
@@ -213,9 +255,13 @@ def _attempt_placement(
             rng,
         )
         if not placed:
-            return None  # This restart is a failure
+            return _AttemptOutcome(
+                placements=None,
+                placed_count=len(placements),
+                failed_activity_id=activity.id,
+            )
 
-    return placements
+    return _AttemptOutcome(placements=placements, placed_count=len(placements))
 
 
 def _try_place_one(
@@ -283,13 +329,13 @@ def _find_best_slot(
     Find the best available (timeslot, room) pair for `activity`.
 
     "Best" is defined as:
-      - Primary sort: lowest day_of_week (compact schedule)
-      - Secondary sort: lowest period_number (early in day)
+      - Primary sort: lowest soft-constraint penalty after the placement
+      - Secondary sort: lowest day_of_week / period_number (compact schedule)
       - Room: smallest-capacity valid room (greedy smallest-fit)
 
     Returns a Placement if found, None if no valid slot exists.
     """
-    # Sort timeslots: day first, then period (keeps schedule compact)
+    # Sort timeslots: day first, then period (keeps schedule compact as tie-breaker)
     sorted_slots = sorted(
         schedule_input.timeslots,
         key=lambda ts: (ts.day_of_week, ts.period_number),
@@ -310,18 +356,33 @@ def _find_best_slot(
         if p.activity_id == activity.id
     }
 
+    best_placement: Optional[Placement] = None
+    best_key: Optional[tuple] = None
+
     for ts in sorted_slots:
         if ts.id in already_used_slots:
             continue
+        chosen_room = None
         for room in sorted_rooms:
             if is_hard_feasible(activity, ts.id, room.id, existing_placements, schedule_input):
-                return Placement(
-                    activity_id=activity.id,
-                    timeslot_id=ts.id,
-                    room_id=room.id,
-                )
+                chosen_room = room
+                break
+        if chosen_room is None:
+            continue
 
-    return None
+        candidate = Placement(
+            activity_id=activity.id,
+            timeslot_id=ts.id,
+            room_id=chosen_room.id,
+        )
+        trial = existing_placements + [candidate]
+        soft_cost = compute_penalty(trial, schedule_input)
+        key = (soft_cost, ts.day_of_week, ts.period_number, chosen_room.capacity)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_placement = candidate
+
+    return best_placement
 
 
 def _find_displaceable(

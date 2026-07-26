@@ -471,6 +471,28 @@ class TeacherReadAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['all_timetables']), [self.timetable])
 
+    def test_teacher_and_room_can_select_timetable_version(self):
+        """Teacher and Room grids honour ?timetable_id= the same as Course Level."""
+        draft = Timetable.objects.create(
+            session=self.session,
+            status=Timetable.Status.DRAFT,
+        )
+        admin = User.objects.create_superuser(username="ver_admin", password="password")
+        self.client.login(username="ver_admin", password="password")
+
+        for url_name in (
+            'timetable:teacher_view',
+            'timetable:room_view',
+            'timetable:course_level_view',
+        ):
+            response = self.client.get(reverse(url_name), {'timetable_id': draft.pk})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.context['timetable'].pk, draft.pk)
+            self.assertIn(draft, list(response.context['all_timetables']))
+            self.assertIn(self.timetable, list(response.context['all_timetables']))
+            self.assertContains(response, 'Timetable version')
+            self.assertContains(response, f'v{draft.version}')
+
 
 class ClassRepReadAccessTests(TestCase):
     def setUp(self):
@@ -704,7 +726,7 @@ class BatchEditorTests(TestCase):
         self.assertTrue(data['ok'])
         self.assertTrue(data['is_valid'])
         self.assertEqual(data['violations'], [])
-        self.assertGreaterEqual(data['penalty_score'], 0)
+        self.assertGreaterEqual(data['soft_conflict_count'], 0)
         self.assertTrue(DraftChangeSet.objects.filter(pk=data['change_set_id'], is_valid=True).exists())
 
     def test_batch_detects_combined_teacher_conflict(self):

@@ -71,4 +71,4 @@ class Command(BaseCommand):
                 [TimetableSlot(**d) for d in slot_dicts]
             )
 
-        self.stdout.write(self.style.SUCCESS(f"Successfully generated timetable v{timetable.version} (Penalty: {timetable.penalty_score})."))
+        self.stdout.write(self.style.SUCCESS(f"Successfully generated timetable v{timetable.version}."))

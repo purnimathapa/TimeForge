@@ -6,7 +6,10 @@ from django.db import transaction
 from accounts.models import User
 from core.models import Department, Session
 from core.forms import SchoolScopedFormMixin
-from .models import Subject, Course, CourseLevel, TeacherProfile, ClassRepProfile, ClassSession
+from .models import (
+    Subject, Course, CourseLevel, CourseLevelOffering,
+    TeacherProfile, ClassRepProfile, ClassSession,
+)
 from scheduling.models import TeacherAvailability
 
 
@@ -91,6 +94,73 @@ class CourseForm(SchoolScopedFormMixin, forms.ModelForm):
         self.fields['department'].queryset = qs.order_by('name')
 
 
+class RunningSemesterForm(forms.Form):
+    """Create a CourseLevelOffering for a course in the active session."""
+
+    level = forms.TypedChoiceField(
+        choices=LEVEL_CHOICES,
+        coerce=int,
+        label='Semester',
+        help_text='Study level (1–8) to mark as running in the active session.',
+    )
+    shift = forms.ChoiceField(
+        choices=CourseLevelOffering.Shift.choices,
+        initial=CourseLevelOffering.Shift.DAY,
+        label='Shift',
+    )
+
+    def __init__(self, *args, course=None, session=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.course = course
+        self.session = session
+        self.fields['level'].widget.attrs.update({'class': 'form-select'})
+        self.fields['shift'].widget.attrs.update({'class': 'form-select'})
+        if course is not None and session is not None:
+            taken = set(
+                CourseLevelOffering.objects.filter(
+                    session=session,
+                    course_level__course=course,
+                ).values_list('course_level__level', flat=True)
+            )
+            self.fields['level'].choices = [
+                (i, f'Semester {i}') for i in range(1, 9) if i not in taken
+            ]
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.course is None or self.session is None:
+            raise ValidationError('Course and active session are required.')
+        level = cleaned.get('level')
+        if level is None:
+            return cleaned
+        if not self.fields['level'].choices:
+            raise ValidationError('All semesters are already running for this course.')
+        if CourseLevelOffering.objects.filter(
+            session=self.session,
+            course_level__course=self.course,
+            course_level__level=level,
+        ).exists():
+            raise ValidationError({'level': 'That semester is already running.'})
+        return cleaned
+
+    def save(self):
+        course_level = _resolve_course_level(self.course, self.cleaned_data['level'])
+        return CourseLevelOffering.objects.create(
+            session=self.session,
+            course_level=course_level,
+            shift=self.cleaned_data['shift'],
+        )
+
+
+class OfferingShiftForm(forms.ModelForm):
+    class Meta:
+        model = CourseLevelOffering
+        fields = ['shift']
+        widgets = {
+            'shift': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+
 class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
     """Edit an existing teacher profile, including the account's name."""
 
@@ -106,14 +176,14 @@ class TeacherProfileForm(SchoolScopedFormMixin, forms.ModelForm):
 
     field_order = [
         'first_name', 'last_name', 'employee_id', 'title', 'is_visiting',
-        'departments', 'max_hours_per_day', 'max_hours_per_week', 'is_active',
+        'departments', 'max_periods_per_day', 'is_active',
     ]
 
     class Meta:
         model = TeacherProfile
         fields = [
             'title', 'is_visiting', 'departments',
-            'max_hours_per_day', 'max_hours_per_week', 'is_active',
+            'max_periods_per_day', 'is_active',
         ]
 
     def __init__(self, *args, **kwargs):
@@ -167,14 +237,18 @@ class TeacherCreationForm(UserCreationForm):
         label="Visiting faculty",
     )
     departments = _department_checkbox_field(required=False)
-    max_hours_per_day = forms.IntegerField(min_value=1, initial=4)
-    max_hours_per_week = forms.IntegerField(min_value=1, initial=20)
+    max_periods_per_day = forms.IntegerField(
+        min_value=1,
+        initial=4,
+        label='Max periods per day',
+        help_text='Maximum teaching periods this teacher may have in one day.',
+    )
     is_active = forms.BooleanField(required=False, initial=True)
 
     field_order = [
         'first_name', 'last_name', 'username', 'email', 'password1', 'password2',
         'title', 'is_visiting', 'departments',
-        'max_hours_per_day', 'max_hours_per_week', 'is_active',
+        'max_periods_per_day', 'is_active',
     ]
 
     class Meta(UserCreationForm.Meta):
@@ -210,8 +284,7 @@ class TeacherCreationForm(UserCreationForm):
                 employee_id=TeacherProfile.generate_employee_id(),
                 title=self.cleaned_data.get('title', ''),
                 is_visiting=self.cleaned_data.get('is_visiting', False),
-                max_hours_per_day=self.cleaned_data['max_hours_per_day'],
-                max_hours_per_week=self.cleaned_data['max_hours_per_week'],
+                max_periods_per_day=self.cleaned_data['max_periods_per_day'],
                 is_active=self.cleaned_data.get('is_active', True),
             )
             profile.departments.set(self.cleaned_data.get('departments') or [])

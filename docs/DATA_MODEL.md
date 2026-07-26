@@ -48,7 +48,12 @@ Degree / program catalog entry (e.g. BE in Computer Engineering).
 ### CourseLevel
 Study level within a course (1–8) — the schedulable cohort unit.
 - **Fields:** level (1–8), student_count, is_active
-- **Relationships:** FK → Course; one-to-many → ClassSession, ClassRepProfile
+- **Relationships:** FK → Course; one-to-many → ClassSession, ClassRepProfile, CourseLevelOffering
+
+### CourseLevelOffering
+Marks a CourseLevel as running in a Session, with a Morning (7–2) or Day (9–5) shift.
+- **Fields:** shift (MORNING / DAY)
+- **Relationships:** FK → Session; FK → CourseLevel
 
 ### TeacherProfile
 Instructor profile linked to a user account.

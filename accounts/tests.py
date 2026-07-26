@@ -99,6 +99,12 @@ class ClassRepCreateViewTests(TestCase):
 class AdminCreateViewTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")
+        self.limited_admin = User.objects.create_user(
+            username="limitedadmin",
+            password="password",
+            role=User.RoleChoices.ADMIN,
+            can_create_admins=False,
+        )
         self.teacher = User.objects.create_user(
             username="teacher",
             password="password",
@@ -114,12 +120,13 @@ class AdminCreateViewTests(TestCase):
             "password2": "ComplexPass123!",
         }
 
-    def test_admin_can_get_create_form(self):
+    def test_privileged_admin_can_get_create_form(self):
+        self.assertTrue(self.admin.may_create_admins())
         self.client.login(username="admin", password="password")
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
 
-    def test_admin_can_create_admin_account(self):
+    def test_privileged_admin_can_create_admin_account(self):
         self.client.login(username="admin", password="password")
         response = self.client.post(self.url, self.valid_payload)
 
@@ -127,6 +134,24 @@ class AdminCreateViewTests(TestCase):
         new_user = User.objects.get(username="newadmin")
         self.assertEqual(new_user.role, User.RoleChoices.ADMIN)
         self.assertTrue(new_user.is_admin())
+        self.assertFalse(new_user.can_create_admins)
+
+    def test_privileged_admin_can_grant_create_admins(self):
+        self.client.login(username="admin", password="password")
+        payload = {**self.valid_payload, "can_create_admins": "on"}
+        response = self.client.post(self.url, payload)
+        self.assertEqual(response.status_code, 302)
+        new_user = User.objects.get(username="newadmin")
+        self.assertTrue(new_user.can_create_admins)
+
+    def test_limited_admin_cannot_create_admin_account(self):
+        self.assertFalse(self.limited_admin.may_create_admins())
+        self.client.login(username="limitedadmin", password="password")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(self.url, self.valid_payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.filter(username="newadmin").exists())
 
     def test_teacher_cannot_get_create_form(self):
         self.client.login(username="teacher", password="password")

@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ teacher.ranked_name }} · Teachers · TimeForge{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-3">
+        <a href="{% url 'academics:teacher_list' %}" class="text-decoration-none small text-muted">
+            ← Back to teachers
+        </a>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mt-2">
+            <div>
+                <p class="eyebrow mb-1">Teacher</p>
+                <h1 class="page-title h3 mb-1">{{ teacher.ranked_name }}</h1>
+                <p class="text-muted mb-0">
+                    {{ teacher.employee_id }}
+                    {% if active_session %} · load for <strong>{{ active_session.name }}</strong>{% endif %}
+                </p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'timetable:teacher_view' %}?teacher_id={{ teacher.pk }}" class="btn btn-outline-primary btn-sm">
+                    View routine
+                </a>
+                <a href="{% url 'academics:teacher_update' teacher.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="metric-label">Daily limit</div>
+                    <div class="metric-value">{{ teacher.max_periods_per_day }}</div>
+                    <div class="text-muted small">Max periods per day (profile)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="metric-label">Assigned this session</div>
+                    <div class="metric-value">{{ assigned_periods }}</div>
+                    <div class="text-muted small">Periods/week across {{ class_sessions|length }} class{{ class_sessions|length|pluralize }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="metric-label">Availability slots</div>
+                    <div class="metric-value">{{ availability_open }}<span class="fs-5 text-muted"> / {{ availability_total }}</span></div>
+                    <div class="text-muted small">
+                        {% if availability_total %}
+                            {{ availability_blocked }} marked unavailable
+                        {% else %}
+                            No availability set yet
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-semibold">Profile</div>
+                <div class="card-body">
+                    <dl class="row mb-0 small">
+                        <dt class="col-5 text-muted">Username</dt>
+                        <dd class="col-7">{{ teacher.user.username }}</dd>
+                        <dt class="col-5 text-muted">Email</dt>
+                        <dd class="col-7">{{ teacher.user.email|default:"—" }}</dd>
+                        <dt class="col-5 text-muted">Title</dt>
+                        <dd class="col-7">{{ teacher.title|default:"No title" }}</dd>
+                        <dt class="col-5 text-muted">Departments</dt>
+                        <dd class="col-7">{{ teacher.department_names }}</dd>
+                        <dt class="col-5 text-muted">Status</dt>
+                        <dd class="col-7">
+                            {% if teacher.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                            {% if teacher.is_visiting %}<span class="badge bg-warning text-dark">Visiting</span>{% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold">Subjects taught</div>
+                <ul class="list-group list-group-flush">
+                    {% for subject in subjects %}
+                    <li class="list-group-item">
+                        <span class="fw-semibold">{{ subject.code }}</span>
+                        <div class="text-muted small">{{ subject.name }}</div>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-muted">No subjects assigned in the active session.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold">Classes teaching</div>
+                {% if class_sessions %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Course · semester</th>
+                                <th class="text-end">Periods/week</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cs in class_sessions %}
+                            <tr>
+                                <td>
+                                    <span class="fw-semibold">{{ cs.subject.code }}</span>
+                                    <div class="text-muted small">{{ cs.subject.name }}</div>
+                                </td>
+                                <td>
+                                    {{ cs.course_level.course.code }} · Sem {{ cs.course_level.level }}
+                                    <div class="text-muted small">{{ cs.course_level.course.name }}</div>
+                                </td>
+                                <td class="text-end">{{ cs.periods_per_week }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="card-body text-muted">
+                    {% if active_session %}
+                    No class sessions assigned to this teacher in {{ active_session.name }}.
+                    {% else %}
+                    No active session — set one under Sessions to see current teaching load.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

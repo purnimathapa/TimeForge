@@ -1,7 +1,7 @@
 from django import forms
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import HTML, Div, Field, Fieldset, Layout
+from crispy_forms.layout import HTML, Div, Fieldset, Layout
 
 from academics.models import CourseLevel, Subject, TeacherProfile
 from core.models import Department, Room, Session
@@ -49,23 +49,22 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
     class Meta:
         model = Constraint
         fields = [
-            'name', 'constraint_type', 'target_type', 'is_hard', 'weight',
+            'name', 'constraint_type', 'target_type', 'is_hard',
             'session', 'department', 'teacher', 'room', 'subject', 'course_level',
-            'max_daily_periods', 'max_consecutive_periods', 'required_room_type',
-            'custom_parameters', 'is_active',
+            'max_daily_periods', 'max_weekly_periods', 'max_consecutive_periods',
+            'required_room_type', 'is_active',
         ]
-        widgets = {
-            'custom_parameters': forms.Textarea(attrs={
-                'rows': 3,
-                'placeholder': '{"key": "value"}',
-            }),
-        }
         help_texts = {
             'name': "A short label, e.g. \"No Friday afternoons for Dr. Rai\".",
             'is_hard': "Hard rules must never be broken. Soft rules are preferences the engine tries to honour.",
-            'weight': "Only used for soft rules. Higher weight means the engine tries harder to satisfy it.",
             'target_type': "Who or what this rule applies to.",
-            'custom_parameters': "Advanced: JSON parameters, only for Custom rules.",
+            'max_daily_periods': "Maximum teaching periods allowed in one day.",
+            'max_weekly_periods': "Maximum teaching periods allowed across the whole week.",
+        }
+        labels = {
+            'max_daily_periods': 'Max daily periods',
+            'max_weekly_periods': 'Max weekly periods',
+            'max_consecutive_periods': 'Max consecutive periods',
         }
 
     def __init__(self, *args, **kwargs):
@@ -110,6 +109,10 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
             self.fields['period_start'].initial = params.get('period_start')
             self.fields['period_end'].initial = params.get('period_end')
 
+        # New rules default to soft preferences except room-type (always hard).
+        if not getattr(instance, 'pk', None):
+            self.fields['is_hard'].initial = False
+
         self.helper = self._build_helper()
 
     def _build_helper(self):
@@ -122,7 +125,7 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
                 "name",
                 "constraint_type",
                 "is_hard",
-                Div("weight", css_id="field-weight"),
+                "is_active",
             ),
             Fieldset(
                 "Applies to",
@@ -137,6 +140,7 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
             Fieldset(
                 "Parameters",
                 Div("max_daily_periods", css_id="param-max-daily"),
+                Div("max_weekly_periods", css_id="param-max-weekly"),
                 Div("max_consecutive_periods", css_id="param-max-consec"),
                 Div("required_room_type", css_id="param-room-type"),
                 Div(
@@ -149,8 +153,6 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
                     "period_end",
                     css_id="param-preferred",
                 ),
-                Div("custom_parameters", css_id="param-custom"),
-                Field("is_active"),
             ),
         )
         return helper
@@ -158,6 +160,59 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         ctype = cleaned.get('constraint_type')
+
+        if ctype == Constraint.ConstraintType.ROOM_TYPE_REQUIRED:
+            # Room type is applied as a hard filter on activity placement.
+            cleaned['is_hard'] = True
+            cleaned['target_type'] = Constraint.TargetType.SUBJECT
+            if not cleaned.get('subject'):
+                self.add_error('subject', "Room Type Required must target a subject.")
+
+        if ctype in {
+            Constraint.ConstraintType.MAX_WEEKLY_PERIODS,
+            Constraint.ConstraintType.MAX_CONSECUTIVE_PERIODS,
+            Constraint.ConstraintType.PREFERRED_TEACHING_TIME,
+        }:
+            target = cleaned.get('target_type')
+            if target not in {Constraint.TargetType.TEACHER, Constraint.TargetType.GLOBAL}:
+                self.add_error(
+                    'target_type',
+                    "This rule type applies to a teacher or globally to all teachers.",
+                )
+            if target == Constraint.TargetType.TEACHER and not cleaned.get('teacher'):
+                self.add_error('teacher', "Select the teacher this rule applies to.")
+
+        if ctype == Constraint.ConstraintType.MAX_DAILY_PERIODS:
+            target = cleaned.get('target_type')
+            if target not in {
+                Constraint.TargetType.TEACHER,
+                Constraint.TargetType.COURSE_LEVEL,
+                Constraint.TargetType.GLOBAL,
+            }:
+                self.add_error(
+                    'target_type',
+                    "Max Daily Periods can target a teacher, a course level, or all teachers.",
+                )
+            if target == Constraint.TargetType.TEACHER and not cleaned.get('teacher'):
+                self.add_error('teacher', "Select the teacher this rule applies to.")
+            if target == Constraint.TargetType.COURSE_LEVEL and not cleaned.get('course_level'):
+                self.add_error('course_level', "Select the course level this rule applies to.")
+
+        if ctype == Constraint.ConstraintType.NO_ADJACENT_GAPS:
+            target = cleaned.get('target_type')
+            if target not in {
+                Constraint.TargetType.TEACHER,
+                Constraint.TargetType.COURSE_LEVEL,
+                Constraint.TargetType.GLOBAL,
+            }:
+                self.add_error(
+                    'target_type',
+                    "No Adjacent Gaps can target a teacher, a course level, or all teachers.",
+                )
+            if target == Constraint.TargetType.TEACHER and not cleaned.get('teacher'):
+                self.add_error('teacher', "Select the teacher this rule applies to.")
+            if target == Constraint.TargetType.COURSE_LEVEL and not cleaned.get('course_level'):
+                self.add_error('course_level', "Select the course level this rule applies to.")
 
         if ctype == Constraint.ConstraintType.PREFERRED_TEACHING_TIME:
             days = cleaned.get('preferred_days') or []
@@ -175,10 +230,28 @@ class ConstraintForm(SchoolScopedFormMixin, forms.ModelForm):
 
             if not self.has_error('preferred_days') and not self.has_error('period_start') \
                     and not self.has_error('period_end'):
-                cleaned['custom_parameters'] = {
+                params = {
                     'preferred_days': [int(d) for d in days],
                     'period_start': period_start,
                     'period_end': period_end,
                 }
+                # custom_parameters is not a form field, so set it on the instance
+                # before ModelForm._post_clean() runs model.full_clean().
+                cleaned['custom_parameters'] = params
+                self.instance.custom_parameters = params
 
+        cleaned['weight'] = Constraint.DEFAULT_SOFT_WEIGHT
+        self.instance.weight = Constraint.DEFAULT_SOFT_WEIGHT
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.weight = Constraint.DEFAULT_SOFT_WEIGHT
+        if self.cleaned_data.get('constraint_type') == Constraint.ConstraintType.PREFERRED_TEACHING_TIME:
+            instance.custom_parameters = self.cleaned_data.get('custom_parameters')
+        elif instance.constraint_type != Constraint.ConstraintType.PREFERRED_TEACHING_TIME:
+            instance.custom_parameters = None
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance

@@ -23,6 +23,7 @@
         {% endif %}
     </td>
     <td class="text-end">
+        <a href="{% url 'academics:course_detail' object.pk %}" class="btn btn-sm btn-primary">Open</a>
         <a href="{% url 'academics:course_update' object.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
         <a href="{% url 'academics:course_delete' object.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
     </td>

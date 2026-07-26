@@ -4,10 +4,10 @@ import datetime
 
 
 class Command(BaseCommand):
-    help = 'Seeds the weekly TimeSlots: 07:00 to 17:00 with an 11:00 to 12:00 lunch break, Mon-Fri'
+    help = 'Seeds the weekly TimeSlots: 07:00 to 16:00 with an 11:00 to 12:00 lunch break, Mon-Fri'
 
     def handle(self, *args, **kwargs):
-        # Class periods run 07:00 to 17:00 (Monday to Friday) with a one-hour
+        # Class periods run 07:00 to 16:00 (Monday to Friday) with a one-hour
         # lunch break at 11:00 to 12:00. Because the break is a gap between
         # periods (not a schedulable slot), no class is ever placed during lunch.
         days = [
@@ -24,7 +24,6 @@ class Command(BaseCommand):
             # Lunch break 11:00 to 12:00 (no period scheduled here).
             (3, datetime.time(12, 0), datetime.time(14, 0)),
             (4, datetime.time(14, 0), datetime.time(16, 0)),
-            (5, datetime.time(16, 0), datetime.time(17, 0)),
         ]
         valid_period_numbers = {p[0] for p in periods}
 

@@ -53,7 +53,7 @@ class Timetable(models.Model):
     )
     penalty_score = models.IntegerField(
         default=0,
-        help_text="Soft-constraint penalty score returned by the scheduling engine."
+        help_text="Internal soft-constraint score used by the scheduling engine (not shown in the UI).",
     )
     notes        = models.TextField(blank=True)
 

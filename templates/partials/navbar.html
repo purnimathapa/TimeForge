@@ -50,7 +50,9 @@
                 <a class="user-menu-item" role="menuitem" href="{% url 'accounts:profile' %}">Profile</a>
                 {% if user.role == 'ADMIN' %}
                 <a class="user-menu-item" role="menuitem" href="{% url 'academics:teacher_create' %}">Create Teacher</a>
+                {% if user.may_create_admins %}
                 <a class="user-menu-item" role="menuitem" href="{% url 'accounts:admin_create' %}">Create Admin</a>
+                {% endif %}
                 <a class="user-menu-item" role="menuitem" href="{% url 'academics:class_rep_create' %}">Create Class Rep</a>
                 {% endif %}
                 <div class="user-menu-divider"></div>

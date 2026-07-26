@@ -13,7 +13,9 @@ django.setup()
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from core.models import Department, Room, School, Session
-from academics.models import Subject, Course, CourseLevel, TeacherProfile, ClassSession
+from academics.models import (
+    Subject, Course, CourseLevel, CourseLevelOffering, TeacherProfile, ClassSession,
+)
 from scheduling.models import TeacherAvailability
 
 User = get_user_model()
@@ -352,10 +354,27 @@ def seed_class_sessions_from_semesters(session, courses_by_code, teachers):
     # Mark odd levels that have sessions with a default cohort size
     CourseLevel.objects.filter(id__in=active_levels).update(student_count=60)
 
+    # Mark each scheduled cohort as a running semester (default Day shift)
+    offering_pairs = (
+        ClassSession.objects.filter(session=session)
+        .values_list("course_level_id", flat=True)
+        .distinct()
+    )
+    offerings_created = 0
+    for course_level_id in offering_pairs:
+        _, was_created = CourseLevelOffering.objects.get_or_create(
+            session=session,
+            course_level_id=course_level_id,
+            defaults={"shift": CourseLevelOffering.Shift.DAY},
+        )
+        if was_created:
+            offerings_created += 1
+
     print(
         f"ClassSessions seeded: {created} created "
         f"(skipped even={skipped_even}, missing subject={skipped_missing_subject}, "
-        f"unknown program={skipped_unknown_program}, bad row={skipped_bad_row})."
+        f"unknown program={skipped_unknown_program}, bad row={skipped_bad_row}); "
+        f"running offerings: {offerings_created} created."
     )
     return created
 

@@ -85,6 +85,48 @@ class CourseLevel(models.Model):
         return f"{self.course.name} — Semester {self.level}"
 
 
+class CourseLevelOffering(models.Model):
+    """
+    A course level that is running in a given academic Session, with a day shift.
+
+    Morning → classes may be placed 07:00–14:00.
+    Day     → classes may be placed 09:00–16:00.
+    """
+
+    class Shift(models.TextChoices):
+        MORNING = 'MORNING', 'Morning (7am–2pm)'
+        DAY = 'DAY', 'Day (9am–4pm)'
+
+    session = models.ForeignKey(
+        Session,
+        on_delete=models.CASCADE,
+        related_name='course_level_offerings',
+    )
+    course_level = models.ForeignKey(
+        CourseLevel,
+        on_delete=models.CASCADE,
+        related_name='offerings',
+    )
+    shift = models.CharField(
+        max_length=10,
+        choices=Shift.choices,
+        default=Shift.DAY,
+    )
+
+    class Meta:
+        unique_together = ('session', 'course_level')
+        ordering = ['course_level__course__name', 'course_level__level']
+
+    def __str__(self):
+        return f"{self.course_level} · {self.session.name} ({self.get_shift_display()})"
+
+    @property
+    def window_label(self):
+        if self.shift == self.Shift.MORNING:
+            return '7:00–14:00'
+        return '9:00–16:00'
+
+
 class TeacherProfile(models.Model):
     class Title(models.TextChoices):
         # Ordered from most senior to most junior academic rank.
@@ -109,8 +151,10 @@ class TeacherProfile(models.Model):
         blank=True,
         help_text='A teacher may be affiliated with one or more departments.',
     )
-    max_hours_per_day = models.PositiveIntegerField(default=4)
-    max_hours_per_week = models.PositiveIntegerField(default=20)
+    max_periods_per_day = models.PositiveIntegerField(
+        default=4,
+        help_text="Hard daily limit: the scheduler will never assign more periods than this in one day.",
+    )
     is_active = models.BooleanField(default=True)
 
     EMPLOYEE_ID_PREFIX = 'EMP-'

@@ -192,15 +192,21 @@
                     {% endif %}
 
                     <div class="d-flex align-items-start gap-3 {% if has_timetable %}pb-3 mb-3{% endif %}" {% if has_timetable %}style="border-bottom: 1px solid var(--tf-border-soft);"{% endif %}>
-                        <span class="icon-chip {% if conflict_penalty == 0 %}{% else %}accent{% endif %}">
-                            <i data-lucide="{% if conflict_penalty == 0 %}shield-check{% else %}shield-alert{% endif %}"></i>
+                        <span class="icon-chip {% if soft_conflicts_broken == 0 %}{% else %}accent{% endif %}">
+                            <i data-lucide="{% if soft_conflicts_broken == 0 %}shield-check{% else %}shield-alert{% endif %}"></i>
                         </span>
                         <div class="flex-grow-1">
                             <div class="fw-semibold">
-                                {% if conflict_penalty == 0 %}No soft conflicts{% else %}Conflict penalty: {{ conflict_penalty }}{% endif %}
+                                {% if soft_conflicts_broken == 0 %}
+                                    No soft conflicts
+                                {% elif soft_conflicts_broken == 1 %}
+                                    1 soft constraint broken
+                                {% else %}
+                                    {{ soft_conflicts_broken }} soft constraints broken
+                                {% endif %}
                             </div>
                             <p class="text-muted small mb-2">
-                                {% if conflict_penalty == 0 %}The current timetable satisfies all soft rules.{% else %}Some soft preferences are unmet.{% endif %}
+                                {% if soft_conflicts_broken == 0 %}The current timetable satisfies all soft rules.{% else %}Some soft preferences are unmet.{% endif %}
                             </p>
                             {% if has_timetable %}
                             <a href="{% url 'timetable:conflict_report' %}" class="btn btn-sm btn-outline-secondary">View conflict report</a>

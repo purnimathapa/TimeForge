@@ -1,16 +1,21 @@
-from django.urls import reverse_lazy
-from django.shortcuts import redirect
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.urls import reverse_lazy, reverse
+from django.shortcuts import redirect, get_object_or_404
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView, View
 from django.db.models import Q
 from django.contrib import messages
 from accounts.mixins import RoleRequiredMixin
 from core.mixins import SchoolFormMixin, ProtectedDeleteMixin
+from core.models import Session
 from core.tenant import filter_by_school
-from .models import Subject, Course, TeacherProfile, ClassRepProfile, ClassSession
+from .models import (
+    Subject, Course, CourseLevelOffering, TeacherProfile, ClassRepProfile, ClassSession,
+)
 from scheduling.models import TeacherAvailability
 from .forms import (
     SubjectForm,
     CourseForm,
+    RunningSemesterForm,
+    OfferingShiftForm,
     TeacherProfileForm,
     TeacherCreationForm,
     ClassRepProfileForm,
@@ -107,6 +112,141 @@ class CourseDeleteView(ProtectedDeleteMixin, AcademicsAdminCRUDMixin, DeleteView
     success_url = reverse_lazy('academics:course_list')
     success_message = "Course deleted successfully."
 
+
+class CourseDetailView(AcademicsAdminCRUDMixin, DetailView):
+    """
+    Course hub: pick a running semester for the active session, set Morning/Day
+    shift, list subjects/teachers, and link to that cohort's timetable.
+    """
+    model = Course
+    template_name = 'academics/course_detail.html'
+    context_object_name = 'course'
+
+    def get_queryset(self):
+        return super().get_queryset().select_related('department')
+
+    def _active_session(self):
+        qs = Session.objects.filter(is_active=True)
+        school = getattr(self.request.user, 'school', None)
+        if school is not None:
+            qs = qs.filter(school=school)
+        return qs.first()
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        course = self.object
+        session = self._active_session()
+        ctx['active_session'] = session
+        ctx['offerings'] = []
+        ctx['selected_offering'] = None
+        ctx['class_sessions'] = []
+        ctx['create_form'] = None
+        ctx['shift_form'] = None
+
+        if session is None:
+            return ctx
+
+        offerings = list(
+            CourseLevelOffering.objects.filter(
+                session=session,
+                course_level__course=course,
+            )
+            .select_related('course_level')
+            .order_by('course_level__level')
+        )
+        ctx['offerings'] = offerings
+        ctx['create_form'] = RunningSemesterForm(course=course, session=session)
+
+        if not offerings:
+            return ctx
+
+        selected_id = self.request.GET.get('offering')
+        selected = None
+        if selected_id:
+            selected = next((o for o in offerings if str(o.pk) == str(selected_id)), None)
+        if selected is None:
+            selected = offerings[0]
+        ctx['selected_offering'] = selected
+        ctx['shift_form'] = OfferingShiftForm(instance=selected)
+        ctx['class_sessions'] = list(
+            ClassSession.objects.filter(
+                session=session,
+                course_level=selected.course_level,
+            )
+            .select_related('subject', 'teacher__user')
+            .order_by('subject__code')
+        )
+        return ctx
+
+
+class RunningSemesterCreateView(AcademicsAdminCRUDMixin, View):
+    """POST: add a running semester (CourseLevelOffering) for a course."""
+
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        course = get_object_or_404(
+            filter_by_school(Course.objects.all(), request, 'department__school'),
+            pk=pk,
+        )
+        session = Session.objects.filter(is_active=True)
+        if getattr(request.user, 'school', None) is not None:
+            session = session.filter(school=request.user.school)
+        session = session.first()
+        if session is None:
+            messages.error(request, "Set an active session before adding a running semester.")
+            return redirect('academics:course_detail', pk=course.pk)
+
+        form = RunningSemesterForm(request.POST, course=course, session=session)
+        if form.is_valid():
+            offering = form.save()
+            messages.success(
+                request,
+                f"Semester {offering.course_level.level} is now running "
+                f"({offering.get_shift_display()}).",
+            )
+            return redirect(
+                f"{reverse('academics:course_detail', kwargs={'pk': course.pk})}"
+                f"?offering={offering.pk}"
+            )
+        for err in form.non_field_errors():
+            messages.error(request, err)
+        for field_errors in form.errors.values():
+            for err in field_errors:
+                messages.error(request, err)
+        return redirect('academics:course_detail', pk=course.pk)
+
+
+class OfferingShiftUpdateView(AcademicsAdminCRUDMixin, View):
+    """POST: update Morning/Day shift for a running semester."""
+
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        offering = get_object_or_404(
+            filter_by_school(
+                CourseLevelOffering.objects.select_related('course_level__course'),
+                request,
+                'course_level__course__department__school',
+            ),
+            pk=pk,
+        )
+        form = OfferingShiftForm(request.POST, instance=offering)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request,
+                f"Semester {offering.course_level.level} shift set to "
+                f"{offering.get_shift_display()}.",
+            )
+        else:
+            messages.error(request, "Could not update shift.")
+        return redirect(
+            f"{reverse('academics:course_detail', kwargs={'pk': offering.course_level.course_id})}"
+            f"?offering={offering.pk}"
+        )
+
+
 # -- TeacherProfile --
 class TeacherListView(AcademicsAdminCRUDMixin, ListView):
     model = TeacherProfile
@@ -117,6 +257,56 @@ class TeacherListView(AcademicsAdminCRUDMixin, ListView):
         if q:
             qs = qs.filter(Q(user__first_name__icontains=q) | Q(user__last_name__icontains=q) | Q(employee_id__icontains=q))
         return qs
+
+
+class TeacherDetailView(AcademicsAdminCRUDMixin, DetailView):
+    """Admin hub for one teacher: load, subjects, classes, availability summary."""
+
+    model = TeacherProfile
+    template_name = 'academics/teacher_detail.html'
+    context_object_name = 'teacher'
+
+    def get_queryset(self):
+        return super().get_queryset().select_related('user').prefetch_related('departments')
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        teacher = self.object
+
+        session_qs = Session.objects.filter(is_active=True)
+        school = getattr(self.request.user, 'school', None)
+        if school is not None:
+            session_qs = session_qs.filter(school=school)
+        session = session_qs.first()
+        ctx['active_session'] = session
+
+        class_sessions = ClassSession.objects.filter(teacher=teacher)
+        if session is not None:
+            class_sessions = class_sessions.filter(session=session)
+        class_sessions = (
+            class_sessions
+            .select_related(
+                'subject',
+                'session',
+                'course_level',
+                'course_level__course',
+            )
+            .order_by('course_level__course__code', 'course_level__level', 'subject__code')
+        )
+        ctx['class_sessions'] = list(class_sessions)
+
+        subjects = {}
+        for cs in ctx['class_sessions']:
+            subjects.setdefault(cs.subject_id, cs.subject)
+        ctx['subjects'] = sorted(subjects.values(), key=lambda s: s.code)
+        ctx['assigned_periods'] = sum(cs.periods_per_week for cs in ctx['class_sessions'])
+
+        avail = TeacherAvailability.objects.filter(teacher=teacher)
+        ctx['availability_total'] = avail.count()
+        ctx['availability_open'] = avail.filter(is_available=True).count()
+        ctx['availability_blocked'] = avail.filter(is_available=False).count()
+        return ctx
+
 
 class TeacherCreateView(AcademicsAdminCRUDMixin, CreateView):
     model = TeacherProfile

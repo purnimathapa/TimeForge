@@ -386,14 +386,14 @@
     font-size: 0.8rem;
 }
 
-.penalty-badge {
+.conflict-badge {
     font-size: 1.1rem;
     padding: 0.4em 0.8em;
 }
 
-.penalty-badge.penalty-none { background-color: #d4edda; color: #155724; }
-.penalty-badge.penalty-low  { background-color: #fff3cd; color: #856404; }
-.penalty-badge.penalty-high { background-color: #f8d7da; color: #721c24; }
+.conflict-badge.conflict-none { background-color: #d4edda; color: #155724; }
+.conflict-badge.conflict-low  { background-color: #fff3cd; color: #856404; }
+.conflict-badge.conflict-high { background-color: #f8d7da; color: #721c24; }
 
 .violation-row {
     transition: background-color 0.15s ease;

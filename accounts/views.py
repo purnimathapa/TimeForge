@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, TemplateView
@@ -25,6 +26,11 @@ class AdminCreateView(LoginRequiredMixin, RoleRequiredMixin, CreateView):
     form_class = AdminCreationForm
     template_name = 'accounts/admin_form.html'
     success_url = reverse_lazy('home')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and not request.user.may_create_admins():
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

@@ -41,7 +41,7 @@ class TeacherData:
     """A teacher with their hard unavailability set."""
     id: int
     name: str
-    max_hours_per_day: int                      # maximum periods per calendar day
+    max_periods_per_day: int                      # maximum periods per calendar day
     unavailable_slot_ids: frozenset             # set of TimeSlotData.id the teacher cannot teach
 
 
@@ -52,7 +52,11 @@ class CourseLevelData:
     name: str
     student_count: int = 0
     course_id: Optional[int] = None
+    course_code: str = ""
+    course_name: str = ""
     level: Optional[int] = None
+    # MORNING → 07:00–14:00, DAY → 09:00–16:00; None → no shift window
+    shift: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,12 @@ class ActivityData:
     periods_per_week: int
     teacher_id: Optional[int] = None           # None → no teacher assigned yet (unassigned)
     room_type_required: Optional[str] = None   # None → any room type is acceptable
+    # Display metadata for diagnostics (optional; empty in unit tests)
+    subject_code: str = ""
+    course_code: str = ""
+    course_name: str = ""
+    semester: Optional[int] = None
+    shift: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +112,12 @@ class ConstraintData:
     and contribute to the final ScheduleResult.penalty score.
 
     constraint_type values that the engine understands:
-      MAX_DAILY_HOURS  — uses max_daily_periods
-      NO_ADJACENT_GAPS — soft: penalises gaps in a teacher's or course level's day
-      MAX_CONSECUTIVE_PERIODS — uses max_consecutive_periods
-      PREFERRED_TEACHING_TIME — uses preferred_days, preferred_period_start/end
-      ROOM_TYPE_REQUIRED — enforced via ActivityData.room_type_required (hard)
-      CUSTOM — ignored by engine (passed through, not evaluated)
+      MAX_DAILY_PERIODS  — hard filter and/or soft score; teacher, course level, or global
+      MAX_WEEKLY_PERIODS — hard filter and/or soft score; teacher or global
+      NO_ADJACENT_GAPS — hard filter and/or soft score; teacher, course level, or global
+      MAX_CONSECUTIVE_PERIODS — hard filter and/or soft score; teacher or global
+      PREFERRED_TEACHING_TIME — hard filter and/or soft score; teacher or global
+      ROOM_TYPE_REQUIRED — enforced via ActivityData.room_type_required (always hard)
 
     PREFERRED_TEACHING_TIME parameters come from Constraint.custom_parameters:
       preferred_days: frozenset[int]  (1=Monday … 5=Friday)
@@ -120,6 +130,7 @@ class ConstraintData:
     teacher_id: Optional[int] = None    # None → applies globally or to non-teacher scope
     course_level_id: Optional[int] = None
     max_daily_periods: Optional[int] = None
+    max_weekly_periods: Optional[int] = None
     max_consecutive_periods: Optional[int] = None
     preferred_days: frozenset = frozenset()
     preferred_period_start: Optional[int] = None
@@ -143,6 +154,7 @@ class ScheduleInput:
     course_levels: list              # list[CourseLevelData]
     activities: list                 # list[ActivityData]
     constraints: list                # list[ConstraintData]
+    session_name: str = ""           # academic session label for diagnostics
 
     # Convenience look-up dicts — populated by __post_init__
     timeslots_by_id: dict = field(default_factory=dict, init=False)

@@ -39,10 +39,10 @@
             {% if timetable %}
                 <div class="d-flex flex-wrap justify-content-lg-end align-items-center gap-2">
                     <span class="badge bg-secondary">{{ slot_count }} session{{ slot_count|pluralize }}</span>
-                    {% if timetable.penalty_score == 0 %}
-                        <span class="badge bg-success" id="timetablePenaltyBadge"><i class="bi bi-check-circle me-1"></i>No Conflicts</span>
+                    {% if soft_conflict_count == 0 %}
+                        <span class="badge bg-success" id="timetableConflictBadge"><i class="bi bi-check-circle me-1"></i>No soft conflicts</span>
                     {% else %}
-                        <span class="badge bg-warning text-dark" id="timetablePenaltyBadge"><i class="bi bi-exclamation-triangle me-1"></i>Penalty: {{ timetable.penalty_score }}</span>
+                        <span class="badge bg-warning text-dark" id="timetableConflictBadge"><i class="bi bi-exclamation-triangle me-1"></i>{{ soft_conflict_count }} soft conflict{{ soft_conflict_count|pluralize }}</span>
                     {% endif %}
                     <div class="btn-group btn-group-sm" role="group" aria-label="Export and print timetable">
                         <a class="btn btn-outline-danger"
@@ -77,19 +77,19 @@
     {# ── Filter Bar ── #}
     <div class="timetable-filter-bar d-print-none">
         <div class="row g-3 align-items-end">
-            {# View switcher: Teacher / Room / Course Level #}
+            {# View switcher: Teacher / Room / Course Level (keep session + version) #}
             <div class="col-12 col-lg-auto">
                 <label class="filter-label">View by</label>
                 <div class="btn-group view-switcher" role="group" aria-label="Choose timetable view">
-                    <a href="{% url 'timetable:teacher_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                    <a href="{% url 'timetable:teacher_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if timetable %}timetable_id={{ timetable.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
                        class="btn btn-sm {% if filter_type == 'teacher' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
                         <i class="bi bi-person-workspace me-1"></i>Teacher
                     </a>
-                    <a href="{% url 'timetable:room_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                    <a href="{% url 'timetable:room_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if timetable %}timetable_id={{ timetable.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
                        class="btn btn-sm {% if filter_type == 'room' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
                         <i class="bi bi-door-open me-1"></i>Room
                     </a>
-                    <a href="{% url 'timetable:course_level_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
+                    <a href="{% url 'timetable:course_level_view' %}?{% if session %}session_id={{ session.pk }}&{% endif %}{% if timetable %}timetable_id={{ timetable.pk }}&{% endif %}{% if selected_department %}department_id={{ selected_department.pk }}{% endif %}"
                        class="btn btn-sm {% if filter_type == 'course_level' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
                         <i class="bi bi-people me-1"></i>Course level
                     </a>
@@ -215,12 +215,12 @@
             </div>
             {% endif %}
 
-            {# Timetable version selector #}
+            {# Timetable version selector (Teacher, Room, and Course Level) #}
             {% if all_timetables %}
             <div class="col-12 col-sm-6 col-lg-auto">
                 <form method="get" id="timetableVersionForm">
                     <label for="timetable_id" class="filter-label">
-                        <i class="bi bi-layers me-1"></i>Version
+                        <i class="bi bi-layers me-1"></i>Timetable version
                     </label>
                     <select name="timetable_id" id="timetable_id" class="form-select form-select-sm" onchange="this.form.submit()">
                         {% for tt in all_timetables %}
@@ -239,6 +239,11 @@
                         <input type="hidden" name="course_level_id" value="{{ selected_course_level.pk }}">
                     {% endif %}
                 </form>
+            </div>
+            {% else %}
+            <div class="col-12 col-sm-6 col-lg-auto">
+                <label class="filter-label">Timetable version</label>
+                <p class="text-muted small mb-0">No timetable versions for this session.</p>
             </div>
             {% endif %}
         </div>

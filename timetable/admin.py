@@ -4,9 +4,9 @@ from .models import Timetable, TimetableSlot
 
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display  = ('session', 'version', 'status', 'penalty_score', 'slot_count', 'generated_at')
+    list_display  = ('session', 'version', 'status', 'slot_count', 'generated_at')
     list_filter   = ('status', 'session')
-    readonly_fields = ('version', 'generated_at', 'penalty_score')
+    readonly_fields = ('version', 'generated_at')
     ordering      = ('-generated_at',)
 
 

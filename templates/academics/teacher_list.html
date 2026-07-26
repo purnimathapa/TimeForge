@@ -37,10 +37,11 @@
                     <div class="d-flex flex-column gap-2">
                         {% if object.is_visiting %}<span class="entity-meta"><i data-lucide="plane"></i> Visiting faculty</span>{% endif %}
                         <span class="entity-meta"><i data-lucide="building-2"></i> {{ object.department_names }}</span>
-                        <span class="entity-meta"><i data-lucide="clock"></i> Up to {{ object.max_hours_per_week }} hrs/week · {{ object.max_hours_per_day }} hrs/day</span>
+                        <span class="entity-meta"><i data-lucide="clock"></i> Up to {{ object.max_periods_per_day }} periods/day</span>
                     </div>
                 </div>
                 <div class="card-footer bg-transparent d-flex justify-content-end entity-card-actions">
+                    <a href="{% url 'academics:teacher_detail' object.pk %}" class="btn btn-sm btn-primary"><i data-lucide="eye" class="icon-sm"></i> Open</a>
                     <a href="{% url 'academics:teacher_update' object.pk %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="pencil" class="icon-sm"></i> Edit</a>
                     <a href="{% url 'academics:teacher_delete' object.pk %}" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon-sm"></i></a>
                 </div>

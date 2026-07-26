@@ -20,7 +20,7 @@
     const discardBtn = document.getElementById("discardChangesBtn");
     const pendingSummary = document.getElementById("pendingMoveSummary");
     const validationResults = document.getElementById("batchValidationResults");
-    const penaltyBadge = document.getElementById("timetablePenaltyBadge");
+    const conflictBadge = document.getElementById("timetableConflictBadge");
 
     let pendingMoves = {};
     let changeSetId = null;
@@ -165,7 +165,7 @@
         }
     }
 
-    function showValidationResults(isValid, violations, penaltyScore) {
+    function showValidationResults(isValid, violations) {
         if (!validationResults) {
             return;
         }
@@ -173,7 +173,7 @@
         validationResults.classList.remove("d-none", "is-valid", "is-invalid");
         if (isValid) {
             validationResults.classList.add("is-valid");
-            validationResults.innerHTML = "<strong>Batch check passed.</strong> Penalty score: " + penaltyScore + ".";
+            validationResults.innerHTML = "<strong>Batch check passed.</strong> No hard conflicts.";
         } else {
             validationResults.classList.add("is-invalid");
             const items = violations.map(function (violation) {
@@ -192,16 +192,16 @@
         validationResults.innerHTML = "";
     }
 
-    function updatePenaltyBadge(penaltyScore) {
-        if (!penaltyBadge) {
+    function updateConflictBadge(hasSoftConflicts) {
+        if (!conflictBadge) {
             return;
         }
-        if (penaltyScore === 0) {
-            penaltyBadge.className = "badge bg-success";
-            penaltyBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>No Conflicts';
+        if (!hasSoftConflicts) {
+            conflictBadge.className = "badge bg-success";
+            conflictBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>No soft conflicts';
         } else {
-            penaltyBadge.className = "badge bg-warning text-dark";
-            penaltyBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Penalty: ' + penaltyScore;
+            conflictBadge.className = "badge bg-warning text-dark";
+            conflictBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Soft conflicts';
         }
     }
 
@@ -314,7 +314,7 @@
             changeSetId = data.change_set_id;
             lastCheckValid = data.is_valid;
             dirtySinceCheck = false;
-            showValidationResults(data.is_valid, data.violations || [], data.penalty_score);
+            showValidationResults(data.is_valid, data.violations || []);
             if (data.is_valid) {
                 showToast("Batch check passed. You can publish these moves.", "success");
             } else {
@@ -350,7 +350,7 @@
             lastCheckValid = false;
             dirtySinceCheck = false;
             clearValidationResults();
-            updatePenaltyBadge(data.penalty_score);
+            updateConflictBadge(Boolean(data.soft_conflict_count));
             updateToolbarState();
             showToast("Staged moves published and locked.", "success");
         } catch (error) {

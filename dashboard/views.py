@@ -224,11 +224,17 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'today_weekday': timezone.localtime().strftime('%A'),
             'draft_pending': False,
             'draft_pending_version': None,
-            'conflict_penalty': 0,
+            'soft_conflicts_broken': 0,
         }
 
         if latest_timetable is not None:
-            ctx['conflict_penalty'] = latest_timetable.penalty_score
+            from timetable.views import _soft_penalty_rows
+
+            violations, _ = _soft_penalty_rows(
+                latest_timetable,
+                latest_timetable.session,
+            )
+            ctx['soft_conflicts_broken'] = len(violations)
             if latest_timetable.status == Timetable.Status.DRAFT:
                 ctx['draft_pending'] = True
                 ctx['draft_pending_version'] = latest_timetable.version

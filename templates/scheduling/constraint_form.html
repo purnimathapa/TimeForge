@@ -37,24 +37,24 @@
                 <div class="card-header"><i class="bi bi-lightbulb me-2 text-primary"></i>Rule types explained</div>
                 <div class="card-body small">
                     <dl class="mb-0">
-                        <dt>Max Daily Hours</dt>
-                        <dd class="text-muted">Limit how many periods a teacher/section has per day.</dd>
-                        <dt>Max Consecutive Periods</dt>
-                        <dd class="text-muted">Avoid long unbroken teaching stretches.</dd>
+                        <dt>Room Type Required</dt>
+                        <dd class="text-muted">Force a subject into a room type (e.g. Lab).</dd>
+                        <dt>Max Daily Periods</dt>
+                        <dd class="text-muted">Limit how many periods a teacher has per day.</dd>
+                        <dt>Max Weekly Periods</dt>
+                        <dd class="text-muted">Limit how many periods a teacher has across the whole week.</dd>
                         <dt>No Adjacent Gaps</dt>
                         <dd class="text-muted">Discourage free periods sandwiched between classes.</dd>
+                        <dt>Max Consecutive Periods</dt>
+                        <dd class="text-muted">Avoid long unbroken teaching stretches.</dd>
                         <dt>Preferred Teaching Time</dt>
-                        <dd class="text-muted">Favour specific days and a period range. Pick them below, no code needed.</dd>
-                        <dt>Room Type Required</dt>
-                        <dd class="text-muted">Force a subject/section into a room type (e.g. Lab).</dd>
-                        <dt>Custom Rule</dt>
-                        <dd class="text-muted mb-0">Advanced JSON parameters for bespoke logic.</dd>
+                        <dd class="text-muted mb-0">Favour specific days and a period range.</dd>
                     </dl>
                 </div>
             </div>
             <div class="alert alert-light border mt-3 small mb-0">
                 <i class="bi bi-info-circle me-1 text-primary"></i>
-                <strong>Hard vs soft:</strong> hard rules are never broken; soft rules are preferences weighted by importance.
+                <strong>Hard vs soft:</strong> hard rules are never broken; soft rules are preferences the engine tries to honour.
             </div>
         </div>
     </div>
@@ -69,17 +69,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const typeField = form.querySelector("#id_constraint_type");
     const targetField = form.querySelector("#id_target_type");
-    const hardField = form.querySelector("#id_is_hard");
 
     const paramByType = {
-        MAX_DAILY_HOURS: ["param-max-daily"],
-        MAX_CONSECUTIVE_PERIODS: ["param-max-consec"],
         ROOM_TYPE_REQUIRED: ["param-room-type"],
+        MAX_DAILY_PERIODS: ["param-max-daily"],
+        MAX_WEEKLY_PERIODS: ["param-max-weekly"],
+        MAX_CONSECUTIVE_PERIODS: ["param-max-consec"],
         PREFERRED_TEACHING_TIME: ["param-preferred"],
-        CUSTOM: ["param-custom"],
         NO_ADJACENT_GAPS: [],
     };
-    const allParamDivs = ["param-max-daily", "param-max-consec", "param-room-type", "param-preferred", "param-custom"];
+    const allParamDivs = [
+        "param-max-daily",
+        "param-max-weekly",
+        "param-max-consec",
+        "param-room-type",
+        "param-preferred",
+    ];
 
     const targetByType = {
         TEACHER: ["tgt-teacher"],
@@ -105,22 +110,14 @@ document.addEventListener("DOMContentLoaded", function () {
         const t = targetField ? targetField.value : "";
         const keep = targetByType[t] || [];
         allTargetDivs.forEach(id => show(id, keep.includes(id)));
-        // department is an optional narrowing filter, always available
         show("tgt-department", true);
-    };
-
-    const syncWeight = () => {
-        // weight only matters for soft rules
-        show("field-weight", hardField ? !hardField.checked : true);
     };
 
     if (typeField) typeField.addEventListener("change", syncParams);
     if (targetField) targetField.addEventListener("change", syncTargets);
-    if (hardField) hardField.addEventListener("change", syncWeight);
 
     syncParams();
     syncTargets();
-    syncWeight();
 });
 </script>
 {% endblock %}

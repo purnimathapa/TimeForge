@@ -41,10 +41,6 @@ from .data_types import (
 
 logger = logging.getLogger(__name__)
 
-# Default soft weight for profile-synthesized MAX_DAILY_HOURS constraints.
-_SYNTHETIC_DAILY_LIMIT_WEIGHT = 10
-
-
 def _constraint_data_from_model(constraint) -> ConstraintData:
     """Map one scheduling.Constraint ORM row to ConstraintData."""
     preferred_days = frozenset()
@@ -65,6 +61,7 @@ def _constraint_data_from_model(constraint) -> ConstraintData:
         teacher_id=constraint.teacher_id,
         course_level_id=constraint.course_level_id,
         max_daily_periods=constraint.max_daily_periods,
+        max_weekly_periods=constraint.max_weekly_periods,
         max_consecutive_periods=constraint.max_consecutive_periods,
         preferred_days=preferred_days,
         preferred_period_start=preferred_period_start,
@@ -169,38 +166,57 @@ def load_schedule_input(session_id: int, school_id: int | None = None) -> Schedu
         TeacherData(
             id=t.id,
             name=t.user.get_full_name() or t.user.username,
-            max_hours_per_day=t.max_hours_per_day,
+            max_periods_per_day=t.max_periods_per_day,
             unavailable_slot_ids=frozenset(unavailability.get(t.id, set())),
         )
         for t in db_teachers
     ]
-    # TeacherProfile.max_hours_per_week is stored for future weekly-limit enforcement;
-    # the engine does not synthesize or evaluate weekly caps in this prompt.
-
     # ---- Course levels (cohorts referenced by this session's class sessions) ----
+    from academics.models import CourseLevelOffering
+
     course_level_ids = {cs.course_level_id for cs in session_class_sessions}
     db_course_levels = CourseLevel.objects.filter(
         pk__in=course_level_ids,
         is_active=True,
     ).select_related("course")
+    shift_by_level = {
+        o.course_level_id: o.shift
+        for o in CourseLevelOffering.objects.filter(
+            session_id=session_id,
+            course_level_id__in=course_level_ids,
+        )
+    }
     course_levels = [
         CourseLevelData(
             id=cl.id,
             name=str(cl),
             student_count=cl.student_count,
             course_id=cl.course_id,
+            course_code=cl.course.code if cl.course_id else "",
+            course_name=cl.course.name if cl.course_id else "",
             level=cl.level,
+            # Default Day window when an offering row is missing
+            shift=shift_by_level.get(cl.id, CourseLevelOffering.Shift.DAY),
         )
         for cl in db_course_levels
     ]
+    course_levels_by_id = {cl.id: cl for cl in course_levels}
+
+    # ---- Apply ROOM_TYPE_REQUIRED constraints to activities ----
+    db_constraints = Constraint.objects.filter(
+        session_id=session_id,
+        is_active=True,
+    ).select_related("teacher", "course_level", "subject", "room")
+
+    subject_room_type: dict[int, str] = {}
+    for c in db_constraints:
+        if c.constraint_type == "ROOM_TYPE_REQUIRED" and c.is_hard and c.subject_id and c.required_room_type:
+            subject_room_type[c.subject_id] = c.required_room_type
 
     # ---- Activities (ClassSessions) ----
-    # Each ClassSession with periods_per_week=N will produce N Placement records;
-    # ActivityData itself is a single record — expansion happens in the algorithm.
     activities = []
     for cs in session_class_sessions:
-        # Room type requirement is carried via Constraint rows; we check those below.
-        # For now, ActivityData.room_type_required is None (constraints handle it).
+        cl_data = course_levels_by_id.get(cs.course_level_id)
         activities.append(
             ActivityData(
                 id=cs.id,
@@ -208,61 +224,19 @@ def load_schedule_input(session_id: int, school_id: int | None = None) -> Schedu
                 course_level_id=cs.course_level_id,
                 periods_per_week=cs.periods_per_week,
                 teacher_id=cs.teacher_id,
-                room_type_required=None,  # overridden below from Constraint rows
+                room_type_required=subject_room_type.get(cs.subject_id),
+                subject_code=cs.subject.code or "",
+                course_code=(cl_data.course_code if cl_data else (cs.course_level.course.code if cs.course_level_id else "")),
+                course_name=(cl_data.course_name if cl_data else (cs.course_level.course.name if cs.course_level_id else "")),
+                semester=cl_data.level if cl_data else getattr(cs.course_level, "level", None),
+                shift=cl_data.shift if cl_data else None,
             )
         )
-
-    # ---- Apply ROOM_TYPE_REQUIRED constraints to activities ----
-    # Look up hard ROOM_TYPE_REQUIRED constraints scoped to subjects
-    db_constraints = Constraint.objects.filter(
-        session_id=session_id,
-        is_active=True,
-    ).select_related("teacher", "course_level", "subject", "room")
-
-    # Build subject→required_room_type map (from hard ROOM_TYPE_REQUIRED constraints)
-    subject_room_type: dict[int, str] = {}
-    for c in db_constraints:
-        if c.constraint_type == "ROOM_TYPE_REQUIRED" and c.is_hard and c.subject_id and c.required_room_type:
-            subject_room_type[c.subject_id] = c.required_room_type
-
-    # Re-build activities with room_type_required populated
-    session_map = {cs.id: cs for cs in session_class_sessions}
-    activities = [
-        ActivityData(
-            id=a.id,
-            subject_name=a.subject_name,
-            course_level_id=a.course_level_id,
-            periods_per_week=a.periods_per_week,
-            teacher_id=a.teacher_id,
-            room_type_required=subject_room_type.get(session_map[a.id].subject_id),
-        )
-        for a in activities
-    ]
 
     # ---- Constraints ----
+    # TeacherProfile.max_periods_per_day is enforced as a hard cap in the engine
+    # via TeacherData — no synthetic Constraint row is required.
     constraints = [_constraint_data_from_model(c) for c in db_constraints]
-
-    teachers_with_explicit_daily_limit = {
-        c.teacher_id
-        for c in constraints
-        if c.constraint_type == "MAX_DAILY_HOURS" and c.teacher_id is not None
-    }
-    # When no explicit MAX_DAILY_HOURS row targets a teacher, synthesize a soft
-    # daily limit from TeacherProfile.max_hours_per_day so profile settings affect
-    # penalty scoring without requiring a separate Constraint row per teacher.
-    for teacher in teachers:
-        if teacher.id in teachers_with_explicit_daily_limit:
-            continue
-        constraints.append(
-            ConstraintData(
-                id=-teacher.id,
-                constraint_type="MAX_DAILY_HOURS",
-                is_hard=False,
-                weight=_SYNTHETIC_DAILY_LIMIT_WEIGHT,
-                teacher_id=teacher.id,
-                max_daily_periods=teacher.max_hours_per_day,
-            )
-        )
 
     logger.info(
         "Loaded schedule input: %d timeslots, %d rooms, %d teachers, "
@@ -282,6 +256,7 @@ def load_schedule_input(session_id: int, school_id: int | None = None) -> Schedu
         course_levels=course_levels,
         activities=activities,
         constraints=constraints,
+        session_name=session.name,
     )
 
 

@@ -98,7 +98,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         return context
 
     def _role_schedule_context(self, role, published):
-        """Today's schedule and next class for teacher / class-rep dashboards."""
+        """Today's schedule and next class for teacher / class-rep dashboards.
+
+        Mirrors MyRoutineView._get_routine_slots() filtering:
+          TEACHER   → TimetableSlot.teacher == teacher_profile
+          CLASS_REP → TimetableSlot.class_session.course_level == rep's level
+        Uses the published timetable passed in from the dashboard context.
+        """
         from django.utils import timezone
 
         ctx = {

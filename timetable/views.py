@@ -144,6 +144,14 @@ def _scoped_course_levels(request, session=None):
     return qs
 
 
+# ── Routine / grid filtration helpers ─────────────────────────────────────
+#
+# Shared building blocks for Teacher, Room, and Course Level grid views,
+# MyRoutineView, and ExportTimetableView. Resolution order:
+#   1. _get_selected_session / _get_selected_department from ?session_id= / ?department_id=
+#   2. _get_timetable — published-only for non-admins; admins may see drafts
+#   3. Entity helpers below narrow dropdown options and slot querysets
+#   4. Subclass get_filter_queryset() applies teacher_id / room_id / course_level_id
 def _teachers_for_filters(request, department=None):
     qs = _scoped_teacher_profiles(request).select_related('user').prefetch_related('departments')
     if department is not None:
@@ -785,6 +793,13 @@ class MyRoutineView(RoleRequiredMixin, TemplateView):
         return ctx
 
     def _get_routine_slots(self, timetable):
+        """Role-based slot filter for the personal routine page.
+
+        TEACHER    → slots where teacher matches the logged-in profile
+        CLASS_REP  → slots for class sessions at the rep's course level
+        Both roles → published timetable only (_get_timetable enforces this)
+        Returns an empty queryset when the profile is missing or inactive.
+        """
         user = self.request.user
         base_qs = _get_base_slot_queryset(timetable)
 

@@ -1,3 +1,14 @@
+"""
+scheduling/tests/test_views.py — integration smoke tests for scheduling CRUD views.
+
+Currently covers auth/role gates on TimeSlot list only (login redirect, 403 for
+teachers, 200 for admins). Constraint CRUD and form validation are not yet
+tested here; engine logic lives in scheduling.tests.test_engine (unit tests).
+
+Run:
+  python manage.py test scheduling.tests.test_views
+"""
+
 from django.test import TestCase
 from django.urls import reverse
 from accounts.models import User

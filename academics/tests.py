@@ -1,3 +1,15 @@
+"""
+academics/tests.py — model and view tests for the academics app.
+
+Covers TeacherPortalView (availability formset update), model constraints, and
+ClassRep profile behaviour. Standard admin CRUD views (Subject/Course/Teacher list
+create update delete) are not smoke-tested here; tenant list isolation for
+academics models is covered in core.tests.test_tenant_isolation.
+
+Run:
+  python manage.py test academics.tests
+"""
+
 from django.db.utils import IntegrityError
 from django.test import TestCase
 from django.urls import reverse

@@ -1,3 +1,14 @@
+"""
+dashboard/tests.py — integration tests for role-specific dashboard context.
+
+Verifies timetable presence/absence messaging for admins and that teachers only
+see published schedules on their dashboard. Routine filtration (_role_schedule_context)
+is exercised indirectly via published-timetable context, not MyRoutineView itself.
+
+Run:
+  python manage.py test dashboard.tests
+"""
+
 from django.test import TestCase
 from django.urls import reverse
 

@@ -1,4 +1,11 @@
-"""Shared helpers for tests that need a tenant school."""
+"""Shared helpers for tests that need a tenant school.
+
+Most integration and tenant-isolation tests call get_test_school() to create
+an isolated School row per test class, avoiding collisions on unique code/name
+fields. Used by timetable, dashboard, core tenant tests, and others.
+
+For release-blocker multi-tenant checks, see core.tests.test_tenant_isolation.
+"""
 
 from core.models import School
 

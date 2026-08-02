@@ -1,3 +1,22 @@
+"""
+timetable/tests.py — automated and integration tests for timetable workflows.
+
+Test layers in this module:
+  Unit-ish helpers   — GetTimetableResolutionTests (_get_timetable resolution rules)
+  Permission / auth  — TimetablePermissionTests, TeacherReadAccessTests,
+                       ClassRepReadAccessTests (role gates on grid + export URLs)
+  Workflow           — TimetablePublishWorkflowTests (publish, discard, archive)
+  JSON editor        — BatchEditorTests, TimetableEditLockTests (move/validate/publish)
+  End-to-end         — TimetableIntegrationTests (generate → grid → move → export)
+
+Run all timetable tests:
+  python manage.py test timetable.tests --verbosity=2
+
+Coverage gaps (intentional TODOs for later):
+  - MyRoutineView / my_routine URL (routine filtration)
+  - Full admin CRUD view smoke tests (covered partly in core.tests.test_tenant_isolation)
+"""
+
 import json
 from datetime import timedelta
 
@@ -280,6 +299,11 @@ class TimetablePublishWorkflowTests(TestCase):
 
 
 class TeacherReadAccessTests(TestCase):
+    """Integration tests for teacher grid/export access and routine filtration params.
+
+    Asserts teachers can browse grids with ?teacher_id= and that published-only
+    timetable rules apply on read paths (no draft leakage).
+    """
     def setUp(self):
         self.school = get_test_school(code="f26r")
         self.teacher_user = User.objects.create_user(
@@ -611,6 +635,11 @@ class ClassRepReadAccessTests(TestCase):
 
 
 class BatchEditorTests(TestCase):
+    """Integration tests for the JSON batch editor (move, validate, publish change sets).
+
+    Uses self.client.post with application/json payloads against timetable editor
+    endpoints; verifies optimistic UI workflow without a browser.
+    """
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.teacher_user = User.objects.create_user(
@@ -840,6 +869,12 @@ class BatchEditorTests(TestCase):
 
 
 class TimetableIntegrationTests(TestCase):
+    """Full HTTP integration: management command → views → JSON editor → export.
+
+    Exercises the generate_timetable command, grid rendering, slot move API,
+    and PDF/XLSX export in one chained flow. Uses Django TestCase + self.client
+    (real URL routing, middleware, and view code paths).
+    """
     def setUp(self):
         self.admin = User.objects.create_superuser(username="admin", password="password")
         self.client.login(username="admin", password="password")
